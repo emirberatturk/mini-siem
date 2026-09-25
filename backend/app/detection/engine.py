@@ -19,6 +19,7 @@ from app.detection.rules.auth import (
     LoginAfterFailures,
     UnknownDeviceLogin,
 )
+from app.detection.rules.signature import WebAttackSignature
 from app.detection.rules.traffic import Excessive404, HighRequestRate, PersistentProbe
 
 RULE_CLASSES: list[type[Rule]] = [
@@ -29,6 +30,7 @@ RULE_CLASSES: list[type[Rule]] = [
     Excessive404,
     PersistentProbe,
     HighRequestRate,
+    WebAttackSignature,
 ]
 
 OPEN_STATUSES = ("new", "investigating", "confirmed")

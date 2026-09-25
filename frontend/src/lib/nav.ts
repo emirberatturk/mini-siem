@@ -5,6 +5,7 @@ export interface HuntFilters {
   event_type?: string
   status?: string
   path?: string
+  signature?: string // 'any' veya Sigma kural adı
   since?: string
   until?: string
 }

@@ -69,6 +69,8 @@ class Event(Base):
     event_outcome: Mapped[str] = mapped_column(String(16))
     redactions: Mapped[int] = mapped_column(Integer, default=0)
     parser: Mapped[str] = mapped_column(String(32))
+    # Eşleşen Sigma kurallarının kısa adları (virgülle); ham istek hiçbir yerde saklanmaz
+    signatures: Mapped[str] = mapped_column(Text, default="", server_default="")
     # Tekrar yüklemede çift kaydı önler (bkz. normalizer.event_key)
     event_key: Mapped[str] = mapped_column(String(64), unique=True)
 

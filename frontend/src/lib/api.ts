@@ -30,6 +30,8 @@ export interface NormalizedEvent {
   event_type: EventType
   event_outcome: 'success' | 'failure' | 'unknown'
   redactions: number
+  /** Eşleşen imza (Sigma) kuralları: olay aramada liste, yükleme özetinde virgüllü metin */
+  signatures?: string[] | string
 }
 
 export interface IngestSummary {
@@ -99,12 +101,29 @@ export interface Rule {
   open_alert_count: number
   skips_proxies: boolean
   known_devices: string[]
+  alert_on?: string | null
+  signature_rules: SignatureRule[]
+}
+
+export interface SignatureRule {
+  name: string
+  title: string
+  level: Severity
+  mitre: string[]
+  author: string
 }
 
 export interface Count {
   key: string
   count: number
   proxy?: boolean
+}
+
+export interface SignatureCount {
+  key: string
+  label: string
+  count: number
+  blocked: number
 }
 
 export interface TimelineBucket {
@@ -128,6 +147,7 @@ export interface Overview {
   peak_events_per_minute: number
   top_ips: Count[]
   top_rules: Count[]
+  top_signatures: SignatureCount[]
   status_classes: Count[]
   event_types: Count[]
   timeline: TimelineBucket[]

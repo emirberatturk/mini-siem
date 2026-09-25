@@ -10,6 +10,7 @@ from app.alerts.workflow import AlertStatus, TransitionError, check_transition
 from app.api.v1.events import EventOut, as_utc
 from app.db.models import Alert, AlertEvent, AlertHistory, Event
 from app.db.session import get_session
+from app.detection import sigma
 from app.detection.engine import OPEN_STATUSES, load_rules, run_on_all
 
 router = APIRouter(tags=["alerts"])
@@ -61,6 +62,14 @@ class StatusChange(BaseModel):
     note: str = Field(default="", max_length=2000)
 
 
+class SignatureRuleOut(BaseModel):
+    name: str
+    title: str
+    level: str
+    mitre: list[str]
+    author: str
+
+
 class RuleOut(BaseModel):
     id: str
     title: str
@@ -72,6 +81,8 @@ class RuleOut(BaseModel):
     open_alert_count: int
     skips_proxies: bool  # hacim tabanlı: aracı sunucu IP'lerinde çalışmaz
     known_devices: list[str] = []  # AUTH-002: tanınan cihaz adları
+    alert_on: str | None = None  # SIG-001: "success" (yalnızca 2xx) veya "all"
+    signature_rules: list[SignatureRuleOut] = []  # SIG-001: yüklü Sigma kuralları
 
 
 @router.get("/alerts")
@@ -168,6 +179,12 @@ def list_rules(db: DB) -> list[RuleOut]:
             alert_count=counts.get(r.id, 0), open_alert_count=open_counts.get(r.id, 0),
             skips_proxies=r.volume_based,
             known_devices=[d.get("name", "?") for d in r.config.get("known_devices", [])],
+            alert_on=r.config.get("alert_on"),
+            signature_rules=[
+                SignatureRuleOut(name=s.name, title=s.title, level=s.level, mitre=s.mitre,
+                                 author=s.author)
+                for s in sigma.default_rules()
+            ] if r.id == "SIG-001" else [],
         )
         for r in load_rules()
     ]

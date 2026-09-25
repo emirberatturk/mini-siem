@@ -542,3 +542,16 @@ input:focus, select:focus, textarea:focus, button:focus-visible {
   .content { padding: 20px 16px 40px; }
   .fact-row { grid-template-columns: 1fr; gap: 2px; }
 }
+
+/* İmza (Sigma) eşleşmeleri */
+.chip-signature { background: #3a1430; color: #ff9ae6; margin-left: 6px; }
+.tag-ok { background: #13352c; color: #7fe0bf; }
+.sev-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; vertical-align: middle; }
+.sev-dot.sev-critical { background: var(--sev-critical); }
+.sev-dot.sev-high { background: var(--sev-high); }
+.sev-dot.sev-medium { background: var(--sev-medium); }
+.sev-dot.sev-low { background: var(--sev-low); }
+.rule-sigma { margin: -6px 0 14px; font-size: 13px; }
+.rule-sigma summary { cursor: pointer; color: var(--accent, #58a6ff); }
+.rule-sigma ul { margin: 8px 0 0; display: grid; gap: 4px; }
+.tag-lead { margin: 0 8px 0 0; }

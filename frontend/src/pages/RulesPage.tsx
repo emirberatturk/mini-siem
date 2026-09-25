@@ -77,6 +77,26 @@ export default function RulesPage({ go }: { go: Go }) {
             {r.skips_proxies && (
               <p className="rule-note">Hacim tabanlı: aracı sunucu IP'lerinde çalışmaz.</p>
             )}
+            {r.alert_on && (
+              <p className="rule-note">
+                {r.alert_on === 'all'
+                  ? 'Her imza eşleşmesi alarm üretir.'
+                  : 'Yalnızca sunucu başarılı (2xx) yanıt verdiyse alarm üretir; engellenen denemeler olaylarda görünür.'}
+              </p>
+            )}
+            {r.signature_rules.length > 0 && (
+              <details className="rule-sigma">
+                <summary>{r.signature_rules.length} Sigma kuralı (SigmaHQ · DRL 1.1)</summary>
+                <ul className="plain">
+                  {r.signature_rules.map((s) => (
+                    <li key={s.name}>
+                      <span className={`sev-dot sev-${s.level}`} aria-hidden /> {s.title}
+                      <span className="dim"> · {s.author}</span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
 
             <dl className="config">
               {Object.entries(r.config).map(([k, v]) => (

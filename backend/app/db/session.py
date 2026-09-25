@@ -1,7 +1,7 @@
 from collections.abc import Iterator
 from pathlib import Path
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
@@ -44,3 +44,17 @@ def init_db(bind: Engine = engine) -> None:
     from app.db import models  # noqa: F401  (tabloların Base'e kaydolması için)
 
     Base.metadata.create_all(bind)
+    _add_missing_columns(bind)
+
+
+# Sonradan eklenen sütunlar. create_all var olan tabloya sütun eklemez; küçük bir projede
+# Alembic yerine bu basit "ekle, yoksa" adımı yeterli (veri silinmez, yalnızca sütun eklenir).
+_ADDED_COLUMNS = {("events", "signatures"): "TEXT NOT NULL DEFAULT ''"}
+
+
+def _add_missing_columns(bind: Engine) -> None:
+    insp = inspect(bind)
+    with bind.begin() as conn:
+        for (table, column), ddl in _ADDED_COLUMNS.items():
+            if column not in {c["name"] for c in insp.get_columns(table)}:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))

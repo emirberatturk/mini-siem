@@ -17,6 +17,7 @@ from app.api.v1.alerts import AlertOut
 from app.api.v1.events import as_utc
 from app.db.models import Alert, Event
 from app.db.session import get_session
+from app.detection import sigma
 from app.detection.base import ProxyMatcher
 from app.detection.engine import OPEN_STATUSES, load_config, proxy_ips
 
@@ -31,6 +32,13 @@ class Count(BaseModel):
     key: str
     count: int
     proxy: bool = False  # IP listelerinde: bu adres bir kişi değil, aracı sunucu
+
+
+class SignatureCount(BaseModel):
+    key: str  # kural kısa adı
+    label: str  # kural başlığı
+    count: int
+    blocked: int  # sunucunun başarılı yanıt vermediği (2xx olmayan) istek sayısı
 
 
 class TimelineBucket(BaseModel):
@@ -54,6 +62,7 @@ class Overview(BaseModel):
     peak_events_per_minute: int
     top_ips: list[Count]
     top_rules: list[Count]
+    top_signatures: list[SignatureCount]  # imza eşleşmeleri (alarm üretmeyen engellenmişler dahil)
     status_classes: list[Count]
     event_types: list[Count]
     timeline: list[TimelineBucket]
@@ -108,6 +117,20 @@ def overview(db: DB, since: datetime | None = None, until: datetime | None = Non
         select(Alert.rule_id, func.count().label("n")).where(*real_alerts)
         .group_by(Alert.rule_id).order_by(func.count().desc())
     ).all()
+    sig_total: Counter[str] = Counter()
+    sig_blocked: Counter[str] = Counter()
+    for sigs, code in db.execute(
+        select(Event.signatures, Event.status_code).where(*in_range, Event.signatures != "")
+    ):
+        for name in filter(None, sigs.split(",")):
+            sig_total[name] += 1
+            sig_blocked[name] += not 200 <= code < 300
+    sig_rules = sigma.rule_by_name()
+    top_signatures = [
+        SignatureCount(key=n, count=c, blocked=sig_blocked[n],
+                       label=sig_rules[n].title if n in sig_rules else n)
+        for n, c in sig_total.most_common()
+    ]
     statuses = db.execute(
         select(Event.status_code, func.count()).where(*in_range).group_by(Event.status_code)
     ).all()
@@ -174,6 +197,7 @@ def overview(db: DB, since: datetime | None = None, until: datetime | None = Non
         top_ips=[Count(key=ip, count=n, proxy=is_proxy(ip))
                  for ip, n in top_ips],
         top_rules=[Count(key=r, count=n) for r, n in top_rules],
+        top_signatures=top_signatures,
         status_classes=[Count(key=k, count=v) for k, v in sorted(classes.items())],
         event_types=[Count(key=t, count=n) for t, n in types],
         timeline=timeline,

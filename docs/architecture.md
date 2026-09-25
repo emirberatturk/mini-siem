@@ -63,6 +63,9 @@ Admin sayfaları, admin API türleri ve kişisel veri içeren sayfalar siteye ö
 - Query string değerleri DB'ye maskelenmiş yazılır (tür/`type` parametresi hariç: olay sınıflandırması için gerekli ve kişisel veri değil).
 - Randevu, iletişim gibi kişisel veri içeren sayfaların parametre değerleri her zaman maskelenir.
 - Telefon, e-posta ve TC Kimlik No kalıpları her alanda taranıp maskelenir.
+- İmza (Sigma) kontrolü maskelemeden **önce**, yalnızca bellekteki ham istek üzerinde yapılır;
+  veritabanına sadece eşleşen kuralın adı yazılır (veri minimizasyonu). Böylece maskeleme,
+  saldırı metnini gizlemek için kullanılabilecek bir kör nokta olmaz.
 - AI asistanına ham log gönderilmez, yalnızca maskelenmiş özet gider.
 
 ## SIEM'in kendi güvenliği

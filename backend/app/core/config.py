@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     environment: str = "development"
     database_url: str = "sqlite:///./data/siem.db"
     rules_config: Path = PROJECT_ROOT / "config" / "rules.yaml"
+    sigma_rules_dir: Path = PROJECT_ROOT / "config" / "sigma"  # imza kuralları (SigmaHQ)
     # config/*.local.yaml: siteye özel, git'e girmeyen ayarlar. Testler kapatır (conftest.py).
     use_local_config: bool = True
 

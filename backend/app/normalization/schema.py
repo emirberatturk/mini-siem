@@ -45,3 +45,6 @@ class NormalizedEvent(BaseModel):
     redactions: int  # bu olayda kaç değer maskelendi
     event_key: str  # tekrar yüklemede çift kaydı önler (bkz. normalizer.event_key)
     parser: str
+    # Eşleşen imza (Sigma) kurallarının kısa adları, virgülle. Ham istek maskelemeden önce
+    # bellekte kontrol edilir; buraya yalnızca kural adı yazılır (bkz. detection/sigma.py).
+    signatures: str = ""

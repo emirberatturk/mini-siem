@@ -129,6 +129,32 @@ export default function OverviewPage({ go }: { go: Go }) {
             onSelect={(rule_id) => go('alerts', { alerts: { rule_id } })}
             empty="Henüz alert yok"
           />
+          <h2 className="panel-title spaced">İmza eşleşmeleri</h2>
+          <BarList
+            items={data.top_signatures.map((s) => ({ key: s.key, count: s.count }))}
+            label={(k) => {
+              const s = data.top_signatures.find((x) => x.key === k)
+              return (
+                <>
+                  {s && s.blocked === s.count ? (
+                    <span className="tag tag-ok tag-lead" title="Sunucu hiçbirine başarılı yanıt vermedi">
+                      engellendi
+                    </span>
+                  ) : (
+                    <span className="tag tag-lead" title="Sunucu en az birine başarılı (2xx) yanıt verdi">
+                      incele
+                    </span>
+                  )}
+                  {s?.label ?? k}
+                </>
+              )
+            }}
+            onSelect={(signature) => go('hunt', { hunt: { signature } })}
+            empty="İmza eşleşmesi yok"
+          />
+          <p className="panel-hint">
+            Engellenen denemeler alarm üretmez ama burada görünür. Tıkla → olayları incele
+          </p>
         </section>
 
         <section className="panel">

@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Pager } from '../components/Pager'
-import { api, type EventType, type NormalizedEvent, type Page } from '../lib/api'
-import { EVENT_LABEL, fmtTime } from '../lib/labels'
+import { api, type EventType, type NormalizedEvent, type Page, type SignatureRule } from '../lib/api'
+import { EVENT_LABEL, fmtTime, sigList } from '../lib/labels'
 import type { Go, HuntFilters } from '../lib/nav'
 
 const PAGE_SIZE = 50
@@ -21,6 +21,15 @@ export default function HuntPage({ go, initialFilters }: { go: Go; initialFilter
   const [data, setData] = useState<Page<NormalizedEvent> | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [open, setOpen] = useState<number | null>(null)
+  const [sigRules, setSigRules] = useState<SignatureRule[]>([])
+
+  useEffect(() => {
+    api
+      .rules()
+      .then((rs) => setSigRules(rs.find((r) => r.id === 'SIG-001')?.signature_rules ?? []))
+      .catch(() => setSigRules([])) // filtre listesi olmadan da sayfa çalışır
+  }, [])
+  const sigTitle = (name: string) => sigRules.find((r) => r.name === name)?.title ?? name
 
   const load = useCallback(() => {
     api
@@ -86,6 +95,16 @@ export default function HuntPage({ go, initialFilters }: { go: Go; initialFilter
           </select>
         </label>
         <label>
+          <span>İmza</span>
+          <select {...field('signature')}>
+            <option value="">Tümü</option>
+            <option value="any">Herhangi bir imza</option>
+            {sigRules.map((r) => (
+              <option key={r.name} value={r.name}>{r.title}</option>
+            ))}
+          </select>
+        </label>
+        <label>
           <span>HTTP kodu</span>
           <input className="mono short" placeholder="404 / 4xx" {...field('status')} />
         </label>
@@ -132,6 +151,9 @@ export default function HuntPage({ go, initialFilters }: { go: Go; initialFilter
           <button className="link-btn" onClick={() => apply({ ...filters, status: '4xx' })}>
             Sadece 4xx yanıtlar
           </button>
+          <button className="link-btn" onClick={() => apply({ ...filters, signature: 'any' })}>
+            Sadece imza eşleşenler
+          </button>
         </div>
       )}
 
@@ -173,6 +195,14 @@ export default function HuntPage({ go, initialFilters }: { go: Go; initialFilter
                           <span className={`chip chip-${e.event_type}`}>
                             {EVENT_LABEL[e.event_type as EventType]}
                           </span>
+                          {sigList(e.signatures).length > 0 && (
+                            <span
+                              className="chip chip-signature"
+                              title={sigList(e.signatures).map(sigTitle).join(', ')}
+                            >
+                              imza
+                            </span>
+                          )}
                         </td>
                         <td className="mono break">
                           {e.http_method ?? '?'} {e.url_path}
@@ -192,6 +222,12 @@ export default function HuntPage({ go, initialFilters }: { go: Go; initialFilter
                               <dd className="mono">{e.bytes_sent.toLocaleString('tr-TR')} bayt</dd>
                               <dt>Maskelenen değer</dt>
                               <dd className="mono">{e.redactions}</dd>
+                              {sigList(e.signatures).length > 0 && (
+                                <>
+                                  <dt>İmza eşleşmesi</dt>
+                                  <dd>{sigList(e.signatures).map(sigTitle).join(' · ')}</dd>
+                                </>
+                              )}
                             </dl>
                           </td>
                         </tr>

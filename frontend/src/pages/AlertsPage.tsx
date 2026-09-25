@@ -361,6 +361,8 @@ const EVIDENCE_LABEL: Record<string, string> = {
   known_devices: 'Bilinen cihazlar',
   days_active: 'Süre (gün)',
   post_login: 'Girişten sonraki admin istekleri',
+  signatures: 'Eşleşen imzalar',
+  success_responses: 'Başarılı (2xx) yanıt',
 }
 
 /** Kanıt, kuraldan kurala değişen bir JSON: tanıdık alanları okunaklı biçimde göster. */
@@ -379,6 +381,18 @@ function Evidence({ evidence }: { evidence: Record<string, unknown> }) {
 
 function renderValue(key: string, v: unknown) {
   if (key === 'success_at' && typeof v === 'string') return <span className="mono">{fmtTime(v)}</span>
+  if (key === 'signatures' && Array.isArray(v)) {
+    return (
+      <ul className="plain">
+        {(v as { title: string; count: number; success?: number }[]).map((s) => (
+          <li key={s.title}>
+            {s.title} <span className="mono dim">· {s.count} istek</span>
+            {s.success ? <span className="tag">{s.success} başarılı yanıt</span> : null}
+          </li>
+        ))}
+      </ul>
+    )
+  }
   if (Array.isArray(v)) {
     if (v.length === 0) return <span className="muted">—</span>
     return (

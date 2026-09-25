@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -11,6 +11,7 @@ from app.db.session import get_session
 
 router = APIRouter(tags=["events"])
 STATUS_PATTERN = r"^[1-5](\d\d|xx)$"  # tam kod (404) veya sınıf (4xx)
+SIGNATURE_PATTERN = r"^[a-z0-9_]{1,64}$"  # "any" ya da kural adı
 DB = Annotated[Session, Depends(get_session)]
 
 
@@ -31,6 +32,12 @@ class EventOut(BaseModel):
     event_type: str
     event_outcome: str
     redactions: int
+    signatures: list[str]  # eşleşen Sigma kurallarının kısa adları
+
+    @field_validator("signatures", mode="before")
+    @classmethod
+    def split_signatures(cls, value: object) -> object:
+        return [s for s in value.split(",") if s] if isinstance(value, str) else value
 
 
 class EventPage(BaseModel):
@@ -66,6 +73,8 @@ def list_events(
     event_type: str | None = None,
     status: Annotated[str | None, Query(pattern=STATUS_PATTERN, description="404 veya 4xx")] = None,
     path: Annotated[str | None, Query(max_length=200, description="içerir")] = None,
+    signature: Annotated[str | None, Query(pattern=SIGNATURE_PATTERN,
+                                           description="'any' veya kural adı")] = None,
     since: datetime | None = None,
     until: datetime | None = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 50,
@@ -85,6 +94,11 @@ def list_events(
             q = q.where(Event.status_code == int(status))
     if path:
         q = q.where(Event.url_path.like(f"%{escape_like(path)}%", escape="\\"))
+    if signature == "any":
+        q = q.where(Event.signatures != "")
+    elif signature:  # virgüllü listede tam ad: ",sql_injection," (_ joker sayılmasın)
+        q = q.where(("," + Event.signatures + ",")
+                    .like(f"%,{escape_like(signature)},%", escape="\\"))
     if since:
         q = q.where(Event.timestamp >= as_utc(since))
     if until:
