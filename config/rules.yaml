@@ -1,0 +1,58 @@
+# Tespit kuralı eşikleri. Değiştirdikten sonra backend'i yeniden başlat.
+# Eşiği düşürmek = daha çok alert (ve daha çok yanlış alarm); yükseltmek = daha az gürültü
+# ama gerçek saldırıyı kaçırma riski. Buna "detection tuning" denir.
+
+AUTH-001:            # Başarısız giriş patlaması
+  enabled: true
+  window_minutes: 10
+  threshold: 5       # bu kadar başarısız giriş → orta
+  high_threshold: 20 # bu kadar (veya hesap kilidi) → yüksek
+
+CORR-001:            # Başarısız denemelerden sonra başarılı giriş
+  enabled: true
+  lookback_minutes: 30
+  min_failures: 3
+  followup_minutes: 15  # girişten sonraki admin erişimleri kanıta eklenir
+
+AUTH-002:            # Tanınmayan cihazdan admin girişi
+  enabled: true
+  followup_minutes: 15
+  # Admin paneline giren bilinen cihazlar. Bir cihazın "match" listesindeki ifadelerin
+  # HEPSİ tarayıcı bilgisinde (user-agent) geçmeli. Sürüm numarası YAZMA: tarayıcılar
+  # sürekli güncellenir (Chrome 2 ayda 151 → 153 oldu), sürüm yazılırsa her güncellemede
+  # sahte alarm çıkar. Gerçek cihazlarını config/rules.local.yaml'a yaz (git'e girmez).
+  # Liste boşsa kural yorum yapmaz (alarm üretmez).
+  known_devices: []
+  # Örnek:
+  #   - name: Windows bilgisayar (Chrome)
+  #     match: ["Windows NT 10.0", "Chrome/"]
+
+ADMIN-001:           # Yetkisiz admin API denemeleri
+  enabled: true
+  window_minutes: 10
+  threshold: 3
+
+RECON-001:           # Aşırı 404 / tarama
+  enabled: true
+  window_minutes: 5
+  threshold: 20
+  scan_unique_paths: 15  # bu kadar farklı yol → "tarama" (orta)
+
+RATE-001:            # Anormal istek hızı
+  enabled: true
+  window_minutes: 1
+  threshold: 120
+
+RECON-002:           # Israrlı yoklama ("low and slow"): aynı var olmayan yol, uzun süre
+  enabled: true
+  window_minutes: 1440  # 24 saat
+  threshold: 10         # 24 saatte aynı yola ≥10 adet 404
+
+# Aracı sunucular (proxy / yük dengeleyici). Bu adresler bir kişi değil, çok sayıda
+# ziyaretçinin ortak çıkış noktasıdır. Hacim tabanlı kurallar (RATE-001, RECON-001/002)
+# bunlar için çalışmaz; giriş kuralları çalışır ama alert'e "aracı sunucu" notu eklenir.
+# Tek IP veya ağ (ör. 10.0.0.0/8) yazılabilir.
+# Gerçek adresleri config/rules.local.yaml'a yaz (git'e girmez).
+proxy_ips: []
+# Örnek:
+#   - 192.0.2.254

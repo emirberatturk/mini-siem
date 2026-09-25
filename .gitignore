@@ -1,0 +1,27 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+dist/
+
+# Gizli ayarlar ve veriler
+.env
+backend/data/
+*.db
+
+# Gerçek loglar asla repoya girmez (IP = kişisel veri)
+sample_logs/real/
+
+# İndirilen veri setleri (lisans belirsiz, büyük dosyalar) — kaynakları sample_logs/README.md'de
+sample_logs/datasets/
+
+# Siteye özel ayarlar (admin yolları, bilinen cihazlar, proxy IP): saldırgana harita olur
+config/*.local.yaml
+
+# Geliştirme araçlarının yerel ayarları
+.mcp.json

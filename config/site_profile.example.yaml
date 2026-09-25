@@ -1,0 +1,19 @@
+# Örnek site profili. SIEM'lerde buna "asset context" denir: aynı istek bir sitede
+# önemsiz, diğerinde kritik olabilir.
+#
+# Kendi siten için bu dosyayı config/site_profile.local.yaml adıyla kopyalayıp düzenle.
+# *.local.yaml dosyaları git'e girmez: admin yolları ve API adları saldırgana harita olur.
+
+# Admin girişi: POST <login_path>?type=<login_type> → 200 başarılı, 401 yanlış şifre, 429 kilit
+login_path: /app.php
+login_type: login
+
+# Yalnızca oturum açmış admin'in kullanması gereken API türleri
+admin_api_types: [users, ayarlar, randevu_listesi, disa_aktar]
+
+# Admin arayüzü sayfaları
+admin_pages: [/admin/, /admin/giris.html]
+
+# Formlarında kişisel veri olan sayfalar / API türleri: parametre değerleri HER ZAMAN maskelenir
+pii_pages: [/randevu.html, /iletisim.html]
+pii_api_types: [randevu_olustur, yorum_gonder]
