@@ -66,6 +66,10 @@ Admin sayfaları, admin API türleri ve kişisel veri içeren sayfalar siteye ö
 - İmza (Sigma) kontrolü maskelemeden **önce**, yalnızca bellekteki ham istek üzerinde yapılır;
   veritabanına sadece eşleşen kuralın adı yazılır (veri minimizasyonu). Böylece maskeleme,
   saldırı metnini gizlemek için kullanılabilecek bir kör nokta olmaz.
+- Anomali profili yalnızca istatistik tutar (en uzun değer, karakter türü sayaçları); değer
+  saklanmaz, adresinde kişisel veri geçen yollar öğrenilmez, az örnekli kayıtlar diske
+  yazılmaz. Olaya yalnızca "parametre:tür" yazılır.
+- Olay raporunda IP adresleri varsayılan olarak maskelidir.
 - AI asistanına ham log gönderilmez, yalnızca maskelenmiş özet gider.
 
 ## SIEM'in kendi güvenliği

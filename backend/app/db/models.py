@@ -71,6 +71,8 @@ class Event(Base):
     parser: Mapped[str] = mapped_column(String(32))
     # Eşleşen Sigma kurallarının kısa adları (virgülle); ham istek hiçbir yerde saklanmaz
     signatures: Mapped[str] = mapped_column(Text, default="", server_default="")
+    # Anomali bulguları "parametre:tür" (virgülle); parametre değeri saklanmaz
+    anomalies: Mapped[str] = mapped_column(Text, default="", server_default="")
     # Tekrar yüklemede çift kaydı önler (bkz. normalizer.event_key)
     event_key: Mapped[str] = mapped_column(String(64), unique=True)
 
@@ -126,3 +128,41 @@ class AlertHistory(Base):
     note: Mapped[str] = mapped_column(Text, default="")
     changed_by: Mapped[str] = mapped_column(String(64), default="analist")
     changed_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class User(Base):
+    """SIEM kullanıcısı. Şifre scrypt özeti olarak saklanır (bkz. core/security.py)."""
+
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    username: Mapped[str] = mapped_column(String(64), unique=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
+    role: Mapped[str] = mapped_column(String(16))  # "admin" (yönetici) veya "analyst" (analist)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    last_login_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+
+
+class UserSession(Base):
+    """Açık oturum. Çerezdeki belirtecin kendisi değil, SHA-256 özeti saklanır."""
+
+    __tablename__ = "user_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime)
+
+
+class AuthEvent(Base):
+    """Giriş denemelerinin silinmeyen kaydı. Kilit kararı da buradan verilir: var olan ve
+    olmayan kullanıcı adları aynı şekilde sayıldığı için "bu kullanıcı var mı?" sızmaz."""
+
+    __tablename__ = "auth_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, index=True)
+    username: Mapped[str] = mapped_column(String(64), index=True)
+    source_ip: Mapped[str] = mapped_column(String(45))
+    action: Mapped[str] = mapped_column(String(16))  # login_ok / login_fail / login_locked / logout

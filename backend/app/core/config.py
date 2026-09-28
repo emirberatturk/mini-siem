@@ -19,6 +19,17 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/siem.db"
     rules_config: Path = PROJECT_ROOT / "config" / "rules.yaml"
     sigma_rules_dir: Path = PROJECT_ROOT / "config" / "sigma"  # imza kuralları (SigmaHQ)
+    # Anomali profili: sitenin yapısını anlattığı için yereldir, git'e girmez
+    # (oluşturmak için: python -m app.tools.train_profile <log dosyaları>)
+    anomaly_profile: Path = PROJECT_ROOT / "config" / "anomaly_profile.local.json"
+
+    # Oturum ve giriş güvenliği
+    session_hours: int = 8  # oturum en fazla bu kadar açık kalır (mutlak süre)
+    lockout_attempts: int = 5  # bu kadar hatalı denemeden sonra…
+    lockout_minutes: int = 15  # …kullanıcı adı bu süre kilitlenir
+    # Secure çerez yalnızca HTTPS'te gönderilir. SIEM şimdilik yerel HTTP'de çalıştığı için
+    # kapalı; HTTPS arkasına alınırsa SIEM_COOKIE_SECURE=true yapılmalı.
+    cookie_secure: bool = False
     # config/*.local.yaml: siteye özel, git'e girmeyen ayarlar. Testler kapatır (conftest.py).
     use_local_config: bool = True
 

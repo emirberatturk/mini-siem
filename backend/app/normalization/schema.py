@@ -48,3 +48,5 @@ class NormalizedEvent(BaseModel):
     # Eşleşen imza (Sigma) kurallarının kısa adları, virgülle. Ham istek maskelemeden önce
     # bellekte kontrol edilir; buraya yalnızca kural adı yazılır (bkz. detection/sigma.py).
     signatures: str = ""
+    # Anomali bulguları "parametre:tür" (ör. "id:karakter"), virgülle. Değer yazılmaz.
+    anomalies: str = ""

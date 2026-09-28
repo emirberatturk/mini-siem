@@ -5,8 +5,9 @@ loglarını toplayan, kişisel verileri maskeleyen, davranış tabanlı kurallar
 ve alarmları bir SOC arayüzünde yöneten, sıfırdan geliştirdiğim eğitim amaçlı bir SIEM.
 
 > **EN:** A small, from-scratch SIEM for a real business website: Apache log ingestion,
-> KVKK/GDPR-style PII masking, 7 behavior-based detection rules plus 10 SigmaHQ signature rules
-> (evaluated on the raw request before masking; 100% precision on the labeled CSIC 2010 dataset),
+> KVKK/GDPR-style PII masking, 7 behavior-based detection rules, 10 SigmaHQ signature rules and a
+> learned per-parameter anomaly profile (both evaluated on the raw request before masking; on the
+> labeled CSIC 2010 dataset: 37% recall at 99.96% precision, up from 4.2% with signatures alone),
 > MITRE ATT&CK mapping, correlation, alert triage workflow and a SOC dashboard. On 2 months of
 > real logs (43,000+ events) it reduced 88 initial alerts to 3 meaningful ones.
 > Python · FastAPI · React · TypeScript.
@@ -44,10 +45,11 @@ ve alarmları bir SOC arayüzünde yöneten, sıfırdan geliştirdiğim eğitim 
 | **Ayrıştırma** | Apache Combined/Common format, `\"` kaçışları, IPv6; tüm zamanlar UTC'ye çevrilir. Bozuk satırlar sessizce atılmaz, sayılır |
 | **Normalizasyon** | Elastic Common Schema'dan (ECS) esinlenen ortak şema. Giriş API'sinin 200/401/429 yanıtlarından *başarılı giriş / başarısız giriş / hesap kilidi* olayları çıkarılır |
 | **KVKK** | Kişisel veri formu olan sayfalarda tüm parametreler, hassas parametre adları (tel, email, şifre…), e-posta, telefon ve TC Kimlik No (kontrol haneli doğrulama) maskelenir |
-| **Tespit** | 7 davranış kuralı + 10 SigmaHQ imza kuralı, kayan pencere mantığı, alarm tekilleştirme; eşikler YAML'da |
+| **Tespit** | 7 davranış kuralı + 10 SigmaHQ imza kuralı + öğrenilmiş profille anomali tespiti; kayan pencere mantığı, alarm tekilleştirme; eşikler YAML'da |
 | **Korelasyon** | Başarısız denemelerin ardından gelen başarılı giriş **kritik** alarm olur; sonraki admin istekleri kanıta eklenir |
 | **Alarm yönetimi** | Yeni → İnceleniyor → Doğrulandı / Yanlış alarm → Çözüldü. Gerekçe yazılmadan kapatılamaz, silinmeyen denetim geçmişi tutulur |
-| **SOC arayüzü** | Genel bakış, alarm listesi ve detayı, önerilen inceleme adımları, olay arama (threat hunting), kural ekranı |
+| **SOC arayüzü** | Genel bakış, alarm listesi ve detayı, önerilen inceleme adımları, olay arama (threat hunting), kural ekranı, yazdırılabilir olay raporu |
+| **Giriş ve roller** | scrypt ile saklanan şifreler, HttpOnly + SameSite=Strict oturum çerezi, CSRF başlığı, deneme sınırı; Yönetici / Analist rolleri |
 | **MITRE ATT&CK** | Yalnızca kuralın anlamıyla birebir örtüşen teknikler eşlenir; örtüşme yoksa eşleme yapılmaz |
 
 ### Tespit kuralları
@@ -62,6 +64,7 @@ ve alarmları bir SOC arayüzünde yöneten, sıfırdan geliştirdiğim eğitim 
 | `RECON-002` | Aynı var olmayan yola 24 saatte ≥10 istek, günlerce ("low and slow") | Düşük | — |
 | `RATE-001` | Dakikada ≥120 istek | Düşük | — |
 | `SIG-001` | İstek, SigmaHQ topluluk kurallarındaki bir saldırı kalıbıyla eşleşti **ve** sunucu 2xx yanıt verdi | Kuraldan | T1190 vb. |
+| `ANOM-001` | Parametre değeri öğrenilmiş profilden saptı (çok uzun / beklenmeyen karakter) **ve** sunucu 2xx yanıt verdi | Orta | — |
 
 Elastic'in 10.000 satırlık açık `apache_logs` veri setinde (baseline) imza kuralları **hiç eşleşme
 vermedi**. Davranış kurallarından yalnızca `RECON-002` bir alarm üretti: bir yapılandırma aracı
@@ -99,7 +102,7 @@ Yakalama oranı düşük; nedeni ölçüldü:
 - Access log POST gövdesini **hiç kaydetmez**; gövdedeki saldırıları hiçbir log tabanlı kural göremez.
 - Kaçan GET saldırılarının **%82'si hiçbir özel karakter içermiyor** (geçersiz/çok uzun değer,
   parametre kurcalama). Bunlar SQL injection/XSS değil; imzalar bunun için yazılmaz, bir
-  anomali (beklenen değerden sapma) modeli gerekir.
+  anomali (beklenen değerden sapma) modeli gerekir → [Anomali tespiti](#anomali-tespiti-parametre-kurcalama).
 - SigmaHQ kuralları bilerek dar tutulur: **hiç yanlış alarm vermemek**, bir SOC'de her alarmın
   bir analistin zamanı olduğu düşünülünce bilinçli bir tercih.
 
@@ -108,6 +111,57 @@ cd backend
 .venv\Scripts\python.exe -m app.tools.evaluate_signatures ..\sample_logs\datasets\csic2010  # ölçüm
 .venv\Scripts\python.exe -m app.tools.rescan_signatures <log dosyası> --deneme              # eski logları tara
 ```
+
+### Anomali tespiti (parametre kurcalama)
+
+İmzaların kaçırdığı saldırılar için (`ANOM-001`): sistem sitenin normal trafiğinden her sayfa
+ve parametre için bir **profil** öğrenir ("`tarih` hep rakam ve `-`, en fazla 10 karakter")
+ve bundan sapan isteği işaretler: **beklenenden uzun** değer ya da **hiç görülmemiş karakter
+türü** (rakam beklenen yerde harf veya `'`). Model bilerek basit ve açıklanabilir: analist
+"neden?" sorusunun cevabını tek satırda görür.
+
+- **KVKK:** profil yalnızca istatistik tutar (en uzun değer, karakter türü sayaçları); hiçbir
+  parametre değeri saklanmaz. Adresinde kişisel veri geçen yollar hiç öğrenilmez, az örnekli
+  yollar/parametreler diske yazılmaz (veri minimizasyonu). Profil sitenin yapısını anlattığı
+  için yerel dosyadadır ve git'e girmez.
+- **"Normal"den öğrenir, saldırıdan değil:** eğitime yalnızca 2xx yanıt alan ve hiçbir imzayla
+  eşleşmeyen istekler alınır (3xx de hariç: botlar da http→https yönlendirmesi alır).
+- İmzanın zaten yakaladığı istek tekrar alarm üretmez; alarm yalnızca sunucu 2xx döndüyse.
+
+**Ölçüm (CSIC 2010):** profil `normalTrafficTraining` ile öğrenildi, ayrı test dosyalarında
+sınandı:
+
+| GET istekleri | Yakalama | Kesinlik | Yanlış alarm |
+|---|---|---|---|
+| Yalnızca imza | %4,2 | %100 | 0 / 28.000 |
+| **İmza + anomali** | **%37,0** | **%99,96** | **2 / 28.000** |
+
+Dürüst notlar:
+- Modelde "bilinmeyen parametre adı" bulgusu da var ve açılınca yakalama %60,7'ye çıkıyor.
+  Ama incelendiğinde bu artışın CSIC'in saldırıları üretme biçiminden kalan bir izden
+  geldiği görüldü (parametre adlarının sonuna "A" eklenmiş: `idA`, `nombreA`); gerçek sitelerde
+  ise reklam araçları (`utm_source`, `fbclid`) sürekli yeni parametre ekler. Bu yüzden
+  **varsayılan olarak kapalı** ve yukarıdaki sonuçlara dahil değil.
+- İki yanlış alarm açıklanabilir nadir değerler: öğrenilenden uzun bir isim, kullanıcı adında `&`.
+- Gerçek veride (bu site, 2 ay) anomali bulgusu çıkmadı: sitenin gerçek sayfalarına
+  parametre kurcalama denemesi olmamış, saldırılar hep sitede olmayan yollara (`.env`, `.git`)
+  yapılmış. Her parametreye 200 dönen statik sayfalar (ana sayfa) botların eklediği
+  parametreleri de "normal" öğrenir; bu sayfalarda yöntem zayıftır.
+
+```powershell
+cd backend
+.venv\Scripts\python.exe -m app.tools.train_profile <log dosyaları>                      # profili öğren
+.venv\Scripts\python.exe -m app.tools.evaluate_anomaly ..\sample_logs\datasets\csic2010  # ölçüm
+```
+
+### Olay raporu
+
+Alarm detayındaki **📄 Olay raporu** bağlantısı; özet, analist kararı, kanıt, ilgili olaylar ve
+denetim kaydıyla yazdırılabilir bir sayfa açar (tarayıcıdan PDF olarak kaydedilir). Rapor
+paylaşılmak için üretildiğinden **IP adresleri varsayılan olarak maskelidir** (`93.x.x.x`);
+maske kapatılırsa altbilgi bunu açıkça belirtir.
+
+<img src="docs/img/report.png" alt="Olay raporu (IP'ler maskeli)" width="620">
 
 ![Kurallar](docs/img/rules.png)
 
@@ -128,6 +182,17 @@ npm run dev                                                 # Arayüz: http://12
 
 Windows'ta `baslat.bat` ikisini birden başlatır.
 
+**İlk giriş:** güvenlik gereği varsayılan kullanıcı/şifre **yoktur**. İlk yöneticiyi terminalden
+oluştur (şifre ekrana yazılmadan sorulur):
+
+```powershell
+cd backend
+.venv\Scripts\python.exe -m app.tools.users ekle adin --rol yonetici   # analist için: --rol analist
+.venv\Scripts\python.exe -m app.tools.users listele   # diğerleri: sifre <ad> · kilit-ac <ad> · sil <ad>
+```
+
+<img src="docs/img/login.png" alt="Giriş ekranı" width="360">
+
 ### Kendi siten için ayarlar
 
 Siteye özel bilgiler (admin sayfaları, giriş API'si, bilinen cihazlar, aracı sunucu IP'leri)
@@ -144,7 +209,7 @@ koddan ayrıdır ve **git'e girmez**, çünkü bu bilgiler saldırgana harita ol
 
 ```powershell
 cd backend
-.venv\Scripts\python.exe -m pytest        # 132 test
+.venv\Scripts\python.exe -m pytest        # 193 test
 .venv\Scripts\python.exe -m ruff check .  # lint + bandit güvenlik kuralları
 
 cd ..\frontend
@@ -157,7 +222,18 @@ dokümantasyon IP'leri ve açıkça sahte kişisel veriler bulunur.
 
 ## Güvenlik notları
 
-- Sunucular yalnızca `127.0.0.1` üzerinde çalışır. **Kimlik doğrulama yoktur**, internete açılmamalıdır.
+- Sunucular yalnızca `127.0.0.1` üzerinde çalışır ve internete açılmamalıdır: SIEM, saldırgan için
+  en değerli hedeflerden biridir (tüm loglar, admin giriş saatleri, kural eşikleri).
+- **Giriş ve oturum:** şifreler scrypt + rastgele tuzla saklanır (en az 12 karakter); oturum
+  belirteci HttpOnly + SameSite=Strict çerezde taşınır, veritabanında yalnızca SHA-256 özeti tutulur,
+  8 saat sonra düşer. Durum değiştiren her istek `X-Requested-With` başlığı ister (CSRF).
+- **Brute-force:** 15 dakikada 5 hatalı denemeden sonra kullanıcı adı kilitlenir. Var olmayan
+  kullanıcı adları da aynı şekilde sayılır ve hata mesajı hep aynıdır: kullanıcı adı yoklanamaz.
+  Her giriş denemesi `auth_events` tablosuna yazılır.
+- **Roller (en az yetki):** Yönetici log yükler ve kuralları çalıştırır; Analist alarmları
+  inceler, kapatır ve rapor alır. Yetki her istekte **sunucuda** kontrol edilir; bir test
+  uygulamadaki bütün uçları tarayarak girişsiz erişilebilen uç kalmadığını doğrular.
+- Alarm geçmişine değişikliği yapan kişinin kullanıcı adı yazılır (denetim kaydı).
 - Log verisi saldırgan verisidir: arayüzde her zaman düz metin olarak gösterilir (log üzerinden XSS'e karşı).
 - Tüm veritabanı sorguları parametrelidir; YAML dosyaları `safe_load` ile okunur.
 - Gerçek loglar, veritabanı ve siteye özel ayarlar repoda yoktur. Ekran görüntülerindeki IP'ler maskelidir.
@@ -188,9 +264,8 @@ React · TypeScript · Vite
 
 ## Sonraki adımlar
 
-- Anomali tabanlı tespit: imzaların kaçırdığı parametre kurcalama için "beklenen değer" modeli
 - IP'nin ülkesini çevrimdışı veritabanıyla gösterme (IP'ler dışarı gönderilmeden)
-- Kullanıcı girişi ve rol tabanlı yetki (RBAC), veri saklama süresi (retention)
+- Veri saklama süresi (retention), iki adımlı doğrulama (TOTP)
 - Yalnızca maskelenmiş alarm özetleriyle çalışan bir yapay zekâ inceleme asistanı
 
 ---

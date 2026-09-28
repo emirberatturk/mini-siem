@@ -50,7 +50,8 @@ def event_key(raw_line: str, occurrence: int) -> str:
 
 
 def normalize(raw_line: str, req: ParsedRequest, parser: str, occurrence: int = 0,
-              signatures: list[str] | None = None) -> NormalizedEvent:
+              signatures: list[str] | None = None, anomalies: list[str] | None = None
+              ) -> NormalizedEvent:
     category, event_type, outcome = classify(req)
     query = redact_query(req.path, req.query)
     path = redact_text(req.path)
@@ -74,4 +75,5 @@ def normalize(raw_line: str, req: ParsedRequest, parser: str, occurrence: int = 
         event_key=event_key(raw_line, occurrence),
         parser=parser,
         signatures=",".join(signatures or []),
+        anomalies=",".join(anomalies or []),
     )

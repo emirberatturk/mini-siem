@@ -54,6 +54,11 @@ SIG-001:             # İmza eşleşmesi: SigmaHQ web saldırı kalıpları (con
   alert_on: success     # success: yalnızca sunucu 2xx döndüyse alarm (başarılı olmuş olabilir)
                         # all: her eşleşme alarm. Engellenenler her durumda olaylarda görünür.
 
+ANOM-001:            # Anormal parametre değeri (öğrenilmiş profilden sapma)
+  enabled: true
+  window_minutes: 60
+  alert_on: success     # SIG-001 ile aynı mantık; profil: config/anomaly_profile.local.json
+
 # Aracı sunucular (proxy / yük dengeleyici). Bu adresler bir kişi değil, çok sayıda
 # ziyaretçinin ortak çıkış noktasıdır. Hacim tabanlı kurallar (RATE-001, RECON-001/002)
 # bunlar için çalışmaz; giriş kuralları çalışır ama alert'e "aracı sunucu" notu eklenir.

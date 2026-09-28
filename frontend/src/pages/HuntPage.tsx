@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Pager } from '../components/Pager'
 import { api, type EventType, type NormalizedEvent, type Page, type SignatureRule } from '../lib/api'
-import { EVENT_LABEL, fmtTime, sigList } from '../lib/labels'
+import { EVENT_LABEL, describeAnomaly, fmtTime, sigList } from '../lib/labels'
 import type { Go, HuntFilters } from '../lib/nav'
 
 const PAGE_SIZE = 50
@@ -105,6 +105,13 @@ export default function HuntPage({ go, initialFilters }: { go: Go; initialFilter
           </select>
         </label>
         <label>
+          <span>Anomali</span>
+          <select {...field('anomaly')}>
+            <option value="">Tümü</option>
+            <option value="any">Anomali bulgusu olanlar</option>
+          </select>
+        </label>
+        <label>
           <span>HTTP kodu</span>
           <input className="mono short" placeholder="404 / 4xx" {...field('status')} />
         </label>
@@ -153,6 +160,9 @@ export default function HuntPage({ go, initialFilters }: { go: Go; initialFilter
           </button>
           <button className="link-btn" onClick={() => apply({ ...filters, signature: 'any' })}>
             Sadece imza eşleşenler
+          </button>
+          <button className="link-btn" onClick={() => apply({ ...filters, anomaly: 'any' })}>
+            Sadece anomaliler
           </button>
         </div>
       )}
@@ -203,6 +213,14 @@ export default function HuntPage({ go, initialFilters }: { go: Go; initialFilter
                               imza
                             </span>
                           )}
+                          {sigList(e.anomalies).length > 0 && (
+                            <span
+                              className="chip chip-anomaly"
+                              title={sigList(e.anomalies).map(describeAnomaly).join(', ')}
+                            >
+                              anomali
+                            </span>
+                          )}
                         </td>
                         <td className="mono break">
                           {e.http_method ?? '?'} {e.url_path}
@@ -226,6 +244,12 @@ export default function HuntPage({ go, initialFilters }: { go: Go; initialFilter
                                 <>
                                   <dt>İmza eşleşmesi</dt>
                                   <dd>{sigList(e.signatures).map(sigTitle).join(' · ')}</dd>
+                                </>
+                              )}
+                              {sigList(e.anomalies).length > 0 && (
+                                <>
+                                  <dt>Anomali bulgusu</dt>
+                                  <dd>{sigList(e.anomalies).map(describeAnomaly).join(' · ')}</dd>
                                 </>
                               )}
                             </dl>

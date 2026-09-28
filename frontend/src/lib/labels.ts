@@ -54,6 +54,20 @@ export const RULE_LABEL: Record<string, string> = {
   'RECON-002': 'Israrlı yoklama',
   'RATE-001': 'Anormal istek hızı',
   'SIG-001': 'Web saldırı imzası',
+  'ANOM-001': 'Anormal parametre değeri',
+}
+
+const ANOMALY_KIND: Record<string, string> = {
+  uzunluk: 'beklenenden uzun',
+  karakter: 'beklenmeyen karakter',
+  parametre: 'bilinmeyen parametre',
+}
+
+/** "id:karakter" → "id (beklenmeyen karakter)" */
+export const describeAnomaly = (f: string) => {
+  const i = f.lastIndexOf(':')
+  const kind = f.slice(i + 1)
+  return `${f.slice(0, i)} (${ANOMALY_KIND[kind] ?? kind})`
 }
 
 /** API'den liste (olay arama) ya da virgüllü metin (yükleme özeti) gelebilir. */

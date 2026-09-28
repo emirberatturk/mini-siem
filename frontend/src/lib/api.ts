@@ -32,6 +32,8 @@ export interface NormalizedEvent {
   redactions: number
   /** Eşleşen imza (Sigma) kuralları: olay aramada liste, yükleme özetinde virgüllü metin */
   signatures?: string[] | string
+  /** Anomali bulguları "parametre:tür" (aynı biçim kuralı) */
+  anomalies?: string[] | string
 }
 
 export interface IngestSummary {
@@ -103,6 +105,14 @@ export interface Rule {
   known_devices: string[]
   alert_on?: string | null
   signature_rules: SignatureRule[]
+  anomaly_profile?: AnomalyProfile | null
+}
+
+export interface AnomalyProfile {
+  paths: number
+  usable_paths: number
+  params: number
+  requests: number
 }
 
 export interface SignatureRule {
@@ -148,6 +158,7 @@ export interface Overview {
   top_ips: Count[]
   top_rules: Count[]
   top_signatures: SignatureCount[]
+  top_anomalies: SignatureCount[]
   status_classes: Count[]
   event_types: Count[]
   timeline: TimelineBucket[]
@@ -156,8 +167,12 @@ export interface Overview {
 
 export type Query = Record<string, string | number | string[] | undefined | null>
 
+/** Oturum düştüğünde (401) uygulamaya haber verilir: giriş ekranına dönülür. */
+export const UNAUTHORIZED_EVENT = 'siem:unauthorized'
+
 async function handle<T>(res: Response): Promise<T> {
   if (!res.ok) {
+    if (res.status === 401) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
     // FastAPI hataları {"detail": "..."} şeklinde döner
     const body = await res.json().catch(() => null)
     const detail = body?.detail
@@ -176,8 +191,32 @@ function qs(params: Query = {}) {
   return s ? `?${s}` : ''
 }
 
-const get = <T>(path: string, params?: Query) =>
-  fetch(`/api/v1${path}${qs(params)}`).then((r) => handle<T>(r))
+/**
+ * Tüm istekler buradan geçer. Oturum çerezi (HttpOnly) tarayıcı tarafından otomatik gönderilir;
+ * JavaScript onu göremez. Durum değiştiren isteklerde sunucu bu başlığı ister (CSRF koruması).
+ */
+function send<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers)
+  headers.set('X-Requested-With', 'mini-siem')
+  return fetch(`/api/v1${path}`, { ...init, headers, credentials: 'same-origin' }).then((r) =>
+    handle<T>(r),
+  )
+}
+
+const get = <T>(path: string, params?: Query) => send<T>(`${path}${qs(params)}`)
+
+const sendJson = <T>(method: string, path: string, body: unknown) =>
+  send<T>(path, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+
+export interface Me {
+  username: string
+  role: 'admin' | 'analyst'
+  role_label: string
+}
 
 export const api = {
   health: () => get<HealthResponse>('/health'),
@@ -187,23 +226,21 @@ export const api = {
   events: (params: Query) => get<Page<NormalizedEvent>>('/events', params),
   rules: () => get<Rule[]>('/rules'),
 
+  me: () => get<Me>('/auth/me'),
+  setup: () => get<{ has_users: boolean }>('/auth/setup'),
+  login: (username: string, password: string) =>
+    sendJson<Me>('POST', '/auth/login', { username, password }),
+  logout: () => send<{ ok: boolean }>('/auth/logout', { method: 'POST' }),
+
   setAlertStatus: (id: number, status: AlertStatus, note: string) =>
-    fetch(`/api/v1/alerts/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status, note }),
-    }).then((r) => handle<AlertDetail>(r)),
+    sendJson<AlertDetail>('PATCH', `/alerts/${id}`, { status, note }),
 
   rerunDetection: () =>
-    fetch('/api/v1/detection/run', { method: 'POST' }).then((r) =>
-      handle<{ created: number; updated: number }>(r),
-    ),
+    send<{ created: number; updated: number }>('/detection/run', { method: 'POST' }),
 
   uploadLog: (file: File) => {
     const form = new FormData()
     form.append('file', file)
-    return fetch('/api/v1/ingest/upload', { method: 'POST', body: form }).then((r) =>
-      handle<IngestSummary>(r),
-    )
+    return send<IngestSummary>('/ingest/upload', { method: 'POST', body: form })
   },
 }

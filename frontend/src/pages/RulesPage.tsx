@@ -13,7 +13,7 @@ const CONFIG_LABEL: Record<string, string> = {
   scan_unique_paths: 'Tarama: farklı yol',
 }
 
-export default function RulesPage({ go }: { go: Go }) {
+export default function RulesPage({ go, canRun }: { go: Go; canRun: boolean }) {
   const [rules, setRules] = useState<Rule[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
@@ -47,9 +47,11 @@ export default function RulesPage({ go }: { go: Go }) {
             backend'i yeniden başlatıp kuralları tekrar çalıştır.
           </p>
         </div>
-        <button className="btn btn-outline" disabled={running} onClick={rerun}>
-          {running ? 'Çalışıyor…' : 'Kuralları yeniden çalıştır'}
-        </button>
+        {canRun && (
+          <button className="btn btn-outline" disabled={running} onClick={rerun}>
+            {running ? 'Çalışıyor…' : 'Kuralları yeniden çalıştır'}
+          </button>
+        )}
       </div>
 
       {msg && <div className="card card-ok">{msg}</div>}
@@ -82,6 +84,13 @@ export default function RulesPage({ go }: { go: Go }) {
                 {r.alert_on === 'all'
                   ? 'Her imza eşleşmesi alarm üretir.'
                   : 'Yalnızca sunucu başarılı (2xx) yanıt verdiyse alarm üretir; engellenen denemeler olaylarda görünür.'}
+              </p>
+            )}
+            {r.id === 'ANOM-001' && (
+              <p className="rule-note">
+                {r.anomaly_profile
+                  ? `Profil: ${r.anomaly_profile.requests.toLocaleString('tr-TR')} normal istekten öğrenildi · ${r.anomaly_profile.usable_paths}/${r.anomaly_profile.paths} yol yeterli örnekli · ${r.anomaly_profile.params} parametre. Değerler saklanmaz, yalnızca istatistik.`
+                  : 'Profil yok, anomali kontrolü yapılmıyor. Oluşturmak için backend klasöründe: python -m app.tools.train_profile <log dosyası>'}
               </p>
             )}
             {r.signature_rules.length > 0 && (

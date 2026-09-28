@@ -6,6 +6,7 @@ export interface HuntFilters {
   status?: string
   path?: string
   signature?: string // 'any' veya Sigma kural adı
+  anomaly?: string // 'any'
   since?: string
   until?: string
 }

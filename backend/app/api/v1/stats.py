@@ -20,6 +20,7 @@ from app.db.session import get_session
 from app.detection import sigma
 from app.detection.base import ProxyMatcher
 from app.detection.engine import OPEN_STATUSES, load_config, proxy_ips
+from app.detection.rules.parameter import describe
 
 router = APIRouter(tags=["stats"])
 DB = Annotated[Session, Depends(get_session)]
@@ -63,10 +64,25 @@ class Overview(BaseModel):
     top_ips: list[Count]
     top_rules: list[Count]
     top_signatures: list[SignatureCount]  # imza eşleşmeleri (alarm üretmeyen engellenmişler dahil)
+    top_anomalies: list[SignatureCount]  # anomali bulguları "parametre:tür" (aynı biçim)
     status_classes: list[Count]
     event_types: list[Count]
     timeline: list[TimelineBucket]
     recent_alerts: list[AlertOut]
+
+
+def finding_counts(db: Session, column, in_range: list, label) -> list[SignatureCount]:
+    """Virgüllü bulgu sütunundan (imza/anomali) en sık 10 bulgu ve kaçının reddedildiği."""
+    total: Counter[str] = Counter()
+    blocked: Counter[str] = Counter()
+    for values, code in db.execute(
+        select(column, Event.status_code).where(*in_range, column != "")
+    ):
+        for name in filter(None, values.split(",")):
+            total[name] += 1
+            blocked[name] += not 200 <= code < 300
+    return [SignatureCount(key=n, count=c, blocked=blocked[n], label=label(n))
+            for n, c in total.most_common(10)]
 
 
 def pick_bucket(span: timedelta) -> timedelta:
@@ -117,20 +133,10 @@ def overview(db: DB, since: datetime | None = None, until: datetime | None = Non
         select(Alert.rule_id, func.count().label("n")).where(*real_alerts)
         .group_by(Alert.rule_id).order_by(func.count().desc())
     ).all()
-    sig_total: Counter[str] = Counter()
-    sig_blocked: Counter[str] = Counter()
-    for sigs, code in db.execute(
-        select(Event.signatures, Event.status_code).where(*in_range, Event.signatures != "")
-    ):
-        for name in filter(None, sigs.split(",")):
-            sig_total[name] += 1
-            sig_blocked[name] += not 200 <= code < 300
     sig_rules = sigma.rule_by_name()
-    top_signatures = [
-        SignatureCount(key=n, count=c, blocked=sig_blocked[n],
-                       label=sig_rules[n].title if n in sig_rules else n)
-        for n, c in sig_total.most_common()
-    ]
+    top_signatures = finding_counts(
+        db, Event.signatures, in_range, lambda n: sig_rules[n].title if n in sig_rules else n)
+    top_anomalies = finding_counts(db, Event.anomalies, in_range, describe)
     statuses = db.execute(
         select(Event.status_code, func.count()).where(*in_range).group_by(Event.status_code)
     ).all()
@@ -198,6 +204,7 @@ def overview(db: DB, since: datetime | None = None, until: datetime | None = Non
                  for ip, n in top_ips],
         top_rules=[Count(key=r, count=n) for r, n in top_rules],
         top_signatures=top_signatures,
+        top_anomalies=top_anomalies,
         status_classes=[Count(key=k, count=v) for k, v in sorted(classes.items())],
         event_types=[Count(key=t, count=n) for t, n in types],
         timeline=timeline,

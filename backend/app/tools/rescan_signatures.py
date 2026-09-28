@@ -1,9 +1,10 @@
-"""Daha önce yüklenmiş log dosyalarını imza (Sigma) kurallarıyla yeniden tarar.
+"""Daha önce yüklenmiş log dosyalarını imza (Sigma) kuralları ve anomali profiliyle yeniden tarar.
 
-İmza kontrolü ham istek üzerinde yapıldığı için veritabanındaki (maskelenmiş) kayıtlardan
-yapılamaz; orijinal log dosyası yeniden okunur. Aynı satır aynı event_key'i ürettiği için
-kayıtlar eşleştirilir ve YALNIZCA `signatures` sütunu güncellenir: olaylar, alarmlar,
-notlar ve geçmiş olduğu gibi kalır. Ham satırlar yalnızca bellekte işlenir.
+İmza ve anomali kontrolü ham istek üzerinde yapıldığı için veritabanındaki (maskelenmiş)
+kayıtlardan yapılamaz; orijinal log dosyası yeniden okunur. Aynı satır aynı event_key'i
+ürettiği için kayıtlar eşleştirilir ve YALNIZCA `signatures` ve `anomalies` sütunları
+güncellenir: olaylar, alarmlar, notlar ve geçmiş olduğu gibi kalır. Ham satırlar yalnızca
+bellekte işlenir.
 
 Kullanım (backend klasöründe):
     .venv\\Scripts\\python.exe -m app.tools.rescan_signatures ..\\sample_logs\\real\\access_log
@@ -22,6 +23,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.db.models import Event
 from app.db.session import engine, init_db
+from app.detection import anomaly
 from app.detection.engine import run_on_all
 from app.ingestion.pipeline import process_lines
 from app.ingestion.reader import read_log_lines
@@ -29,12 +31,16 @@ from app.ingestion.reader import read_log_lines
 _CHUNK = 500
 
 
-def rescan(paths: list[Path], *, dry_run: bool, bind: Engine | None = None) -> int:
+def rescan(paths: list[Path], *, dry_run: bool, bind: Engine | None = None,
+           profile: anomaly.Profile | None = None) -> int:
+    """Eşleşen kayıtlarda yalnızca signatures ve anomalies sütunlarını günceller."""
     bind = bind or engine
     if not dry_run:
-        init_db(bind)  # eski veritabanına signatures sütununu ekler (veri silinmez)
-    has_column = "signatures" in {c["name"] for c in inspect(bind).get_columns("events")}
-    sig_col = Event.signatures if has_column else literal("")  # deneme: sütun henüz yoksa
+        init_db(bind)  # eski veritabanına eksik sütunları ekler (veri silinmez)
+    columns = {c["name"] for c in inspect(bind).get_columns("events")}
+    # deneme çalıştırmasında sütun henüz yoksa boş kabul edilir
+    sig_col = Event.signatures if "signatures" in columns else literal("")
+    anom_col = Event.anomalies if "anomalies" in columns else literal("")
     events = Event.__table__
     with Session(bind) as db:
         total_updates = 0
@@ -42,25 +48,30 @@ def rescan(paths: list[Path], *, dry_run: bool, bind: Engine | None = None) -> i
             read = read_log_lines(path.read_bytes(),
                                   max_decompressed=settings.max_decompressed_bytes,
                                   max_line_length=settings.max_line_length)
-            found = {e.event_key: e.signatures for e in process_lines(read.lines).events}
+            found = {e.event_key: (e.signatures, e.anomalies)
+                     for e in process_lines(read.lines, profile).events}
 
-            current: dict[str, str] = {}
+            current: dict[str, tuple[str, str]] = {}
             keys = list(found)
             for i in range(0, len(keys), _CHUNK):
-                current.update(db.execute(
-                    select(Event.event_key, sig_col)
-                    .where(Event.event_key.in_(keys[i:i + _CHUNK]))).tuples().all())
+                for key, sig, anom in db.execute(
+                        select(Event.event_key, sig_col, anom_col)
+                        .where(Event.event_key.in_(keys[i:i + _CHUNK]))):
+                    current[key] = (sig, anom)
 
-            changes = [{"k": k, "s": found[k]} for k in current if current[k] != found[k]]
+            changes = [{"k": k, "s": found[k][0], "a": found[k][1]}
+                       for k in current if current[k] != found[k]]
             print(f"{path.name}: {len(read.lines)} satır · veritabanında {len(current)} · "
-                  f"imzalı {sum(1 for s in found.values() if s)} · güncellenecek {len(changes)}"
+                  f"imzalı {sum(1 for s, _ in found.values() if s)} · "
+                  f"anomalili {sum(1 for _, a in found.values() if a)} · "
+                  f"güncellenecek {len(changes)}"
                   + (f" · veritabanında olmayan {len(found) - len(current)}"
                      if len(found) != len(current) else ""))
             if changes and not dry_run:
-                # Yalnızca signatures sütunu yazılır; tek işlem (ya hepsi ya hiçbiri)
+                # Yalnızca bu iki sütun yazılır; tek işlem (ya hepsi ya hiçbiri)
                 db.connection().execute(
                     update(events).where(events.c.event_key == bindparam("k"))
-                    .values(signatures=bindparam("s")), changes)
+                    .values(signatures=bindparam("s"), anomalies=bindparam("a")), changes)
                 db.commit()
             total_updates += len(changes)
 

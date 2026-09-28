@@ -8,7 +8,8 @@ export default defineConfig({
   server: {
     host: '127.0.0.1',
     proxy: {
-      '/api': 'http://127.0.0.1:8000',
+      // SIEM_API_PORT: aynı anda ikinci bir kopya (ör. test veritabanıyla) çalıştırmak için
+      '/api': `http://127.0.0.1:${process.env.SIEM_API_PORT ?? '8000'}`,
     },
   },
 })

@@ -33,8 +33,9 @@ class EventOut(BaseModel):
     event_outcome: str
     redactions: int
     signatures: list[str]  # eşleşen Sigma kurallarının kısa adları
+    anomalies: list[str]  # anomali bulguları "parametre:tür"
 
-    @field_validator("signatures", mode="before")
+    @field_validator("signatures", "anomalies", mode="before")
     @classmethod
     def split_signatures(cls, value: object) -> object:
         return [s for s in value.split(",") if s] if isinstance(value, str) else value
@@ -75,6 +76,7 @@ def list_events(
     path: Annotated[str | None, Query(max_length=200, description="içerir")] = None,
     signature: Annotated[str | None, Query(pattern=SIGNATURE_PATTERN,
                                            description="'any' veya kural adı")] = None,
+    anomaly: Annotated[str | None, Query(pattern=r"^any$", description="'any'")] = None,
     since: datetime | None = None,
     until: datetime | None = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 50,
@@ -99,6 +101,8 @@ def list_events(
     elif signature:  # virgüllü listede tam ad: ",sql_injection," (_ joker sayılmasın)
         q = q.where(("," + Event.signatures + ",")
                     .like(f"%,{escape_like(signature)},%", escape="\\"))
+    if anomaly:
+        q = q.where(Event.anomalies != "")
     if since:
         q = q.where(Event.timestamp >= as_utc(since))
     if until:

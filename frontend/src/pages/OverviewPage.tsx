@@ -2,10 +2,42 @@ import { useCallback, useEffect, useState } from 'react'
 import { SeverityBadge, StatusBadge } from '../components/Badges'
 import { BarList } from '../components/BarList'
 import { Timeline } from '../components/Timeline'
-import { api, type Overview, type Severity } from '../lib/api'
+import { api, type Overview, type Severity, type SignatureCount } from '../lib/api'
 import { EVENT_LABEL, RULE_LABEL, SEVERITIES, SEVERITY_LABEL, fmtNumber, fmtTime } from '../lib/labels'
 import type { EventType } from '../lib/api'
 import type { Go } from '../lib/nav'
+
+/** İmza/anomali bulguları: "engellendi" (hiç 2xx yok) ya da "incele" etiketiyle. */
+function FindingList({ items, onSelect, empty }: {
+  items: SignatureCount[]
+  onSelect: (key: string) => void
+  empty: string
+}) {
+  return (
+    <BarList
+      items={items.map((s) => ({ key: s.key, count: s.count }))}
+      label={(k) => {
+        const s = items.find((x) => x.key === k)
+        return (
+          <>
+            {s && s.blocked === s.count ? (
+              <span className="tag tag-ok tag-lead" title="Sunucu hiçbirine başarılı yanıt vermedi">
+                engellendi
+              </span>
+            ) : (
+              <span className="tag tag-lead" title="Sunucu en az birine başarılı (2xx) yanıt verdi">
+                incele
+              </span>
+            )}
+            {s?.label ?? k}
+          </>
+        )
+      }}
+      onSelect={onSelect}
+      empty={empty}
+    />
+  )
+}
 
 export default function OverviewPage({ go }: { go: Go }) {
   const [data, setData] = useState<Overview | null>(null)
@@ -130,27 +162,16 @@ export default function OverviewPage({ go }: { go: Go }) {
             empty="Henüz alert yok"
           />
           <h2 className="panel-title spaced">İmza eşleşmeleri</h2>
-          <BarList
-            items={data.top_signatures.map((s) => ({ key: s.key, count: s.count }))}
-            label={(k) => {
-              const s = data.top_signatures.find((x) => x.key === k)
-              return (
-                <>
-                  {s && s.blocked === s.count ? (
-                    <span className="tag tag-ok tag-lead" title="Sunucu hiçbirine başarılı yanıt vermedi">
-                      engellendi
-                    </span>
-                  ) : (
-                    <span className="tag tag-lead" title="Sunucu en az birine başarılı (2xx) yanıt verdi">
-                      incele
-                    </span>
-                  )}
-                  {s?.label ?? k}
-                </>
-              )
-            }}
+          <FindingList
+            items={data.top_signatures}
             onSelect={(signature) => go('hunt', { hunt: { signature } })}
             empty="İmza eşleşmesi yok"
+          />
+          <h2 className="panel-title spaced">Anomali bulguları</h2>
+          <FindingList
+            items={data.top_anomalies}
+            onSelect={() => go('hunt', { hunt: { anomaly: 'any' } })}
+            empty="Anomali bulgusu yok"
           />
           <p className="panel-hint">
             Engellenen denemeler alarm üretmez ama burada görünür. Tıkla → olayları incele

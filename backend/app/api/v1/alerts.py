@@ -7,10 +7,11 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.alerts.workflow import AlertStatus, TransitionError, check_transition
+from app.api.v1.auth import CurrentUser, require_admin
 from app.api.v1.events import EventOut, as_utc
 from app.db.models import Alert, AlertEvent, AlertHistory, Event
 from app.db.session import get_session
-from app.detection import sigma
+from app.detection import anomaly, sigma
 from app.detection.engine import OPEN_STATUSES, load_rules, run_on_all
 
 router = APIRouter(tags=["alerts"])
@@ -70,6 +71,13 @@ class SignatureRuleOut(BaseModel):
     author: str
 
 
+class AnomalyProfileOut(BaseModel):
+    paths: int  # öğrenilen yol
+    usable_paths: int  # yorum için yeterli örneği olan yol
+    params: int  # öğrenilen parametre
+    requests: int  # öğrenilen istek
+
+
 class RuleOut(BaseModel):
     id: str
     title: str
@@ -83,6 +91,7 @@ class RuleOut(BaseModel):
     known_devices: list[str] = []  # AUTH-002: tanınan cihaz adları
     alert_on: str | None = None  # SIG-001: "success" (yalnızca 2xx) veya "all"
     signature_rules: list[SignatureRuleOut] = []  # SIG-001: yüklü Sigma kuralları
+    anomaly_profile: AnomalyProfileOut | None = None  # ANOM-001: yerel profil özeti (yoksa None)
 
 
 @router.get("/alerts")
@@ -148,7 +157,7 @@ def get_alert(alert_id: int, db: DB) -> AlertDetail:
 
 
 @router.patch("/alerts/{alert_id}")
-def change_status(alert_id: int, change: StatusChange, db: DB) -> AlertDetail:
+def change_status(alert_id: int, change: StatusChange, db: DB, user: CurrentUser) -> AlertDetail:
     alert = _get(db, alert_id)
     try:
         check_transition(alert.status, change.status, change.note)
@@ -156,7 +165,7 @@ def change_status(alert_id: int, change: StatusChange, db: DB) -> AlertDetail:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
 
     db.add(AlertHistory(alert_id=alert.id, from_status=alert.status, to_status=change.status,
-                        note=change.note.strip()))
+                        note=change.note.strip(), changed_by=user.username))
     alert.status = change.status
     db.commit()
     return _detail(db, alert)
@@ -185,12 +194,25 @@ def list_rules(db: DB) -> list[RuleOut]:
                                  author=s.author)
                 for s in sigma.default_rules()
             ] if r.id == "SIG-001" else [],
+            anomaly_profile=profile_summary() if r.id == "ANOM-001" else None,
         )
         for r in load_rules()
     ]
 
 
-@router.post("/detection/run")
+def profile_summary() -> AnomalyProfileOut | None:
+    p = anomaly.default_profile()
+    if p is None:
+        return None
+    return AnomalyProfileOut(
+        paths=len(p.path_counts),
+        usable_paths=sum(1 for c in p.path_counts.values() if c >= p.settings.min_samples),
+        params=sum(len(params) for params in p.paths.values()),
+        requests=sum(p.path_counts.values()),
+    )
+
+
+@router.post("/detection/run", dependencies=[Depends(require_admin)])
 def rerun_detection(db: DB) -> dict:
     """Tüm olaylar üzerinde kuralları yeniden çalıştırır (ör. rules.yaml değiştikten sonra)."""
     result = run_on_all(db)

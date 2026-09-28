@@ -49,7 +49,10 @@ def init_db(bind: Engine = engine) -> None:
 
 # Sonradan eklenen sütunlar. create_all var olan tabloya sütun eklemez; küçük bir projede
 # Alembic yerine bu basit "ekle, yoksa" adımı yeterli (veri silinmez, yalnızca sütun eklenir).
-_ADDED_COLUMNS = {("events", "signatures"): "TEXT NOT NULL DEFAULT ''"}
+_ADDED_COLUMNS = {
+    ("events", "signatures"): "TEXT NOT NULL DEFAULT ''",
+    ("events", "anomalies"): "TEXT NOT NULL DEFAULT ''",
+}
 
 
 def _add_missing_columns(bind: Engine) -> None:
