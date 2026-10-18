@@ -69,7 +69,10 @@ Admin sayfaları, admin API türleri ve kişisel veri içeren sayfalar siteye ö
 - Anomali profili yalnızca istatistik tutar (en uzun değer, karakter türü sayaçları); değer
   saklanmaz, adresinde kişisel veri geçen yollar öğrenilmez, az örnekli kayıtlar diske
   yazılmaz. Olaya yalnızca "parametre:tür" yazılır.
-- Olay raporunda IP adresleri varsayılan olarak maskelidir.
+- Olay raporunda ve haftalık raporda IP adresleri varsayılan olarak maskelidir.
+- Saklama süresi (varsayılan 90 gün): süresi dolan olaylar ve SIEM giriş kayıtları silinir
+  (secure_delete + WAL boşaltma: silinen içerik dosyada kalmaz); kapatılmış alarmlar karar ve
+  denetim izi için kalır ama IP adresleri maskelenir.
 - AI asistanına ham log gönderilmez, yalnızca maskelenmiş özet gider.
 
 ## SIEM'in kendi güvenliği

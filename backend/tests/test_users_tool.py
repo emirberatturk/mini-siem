@@ -5,7 +5,7 @@ from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 
 from app.core import security
-from app.db.models import AuthEvent, User, UserSession
+from app.db.models import AuthEvent, RecoveryCode, User, UserSession
 from app.db.session import init_db
 from app.tools import users
 
@@ -71,7 +71,7 @@ def test_unlock_records_event_and_list_hides_hashes(engine):
     with Session(engine) as db:
         assert db.scalars(select(AuthEvent.action)).all() == ["unlock"]
     listed = users.list_users(engine)
-    assert listed == [("emir", "admin", "—")]
+    assert listed == [("emir", "admin", "—", False)]  # 2FA henüz kurulmadı
     assert "scrypt" not in repr(listed)
 
 
@@ -79,3 +79,25 @@ def test_remove_user(engine):
     users.add_user(engine, "emir", "analist", STRONG)
     users.remove_user(engine, "emir")
     assert users.list_users(engine) == []
+
+
+def test_reset_mfa_clears_secret_codes_and_sessions(engine):
+    u = users.add_user(engine, "emir", "yonetici", STRONG)
+    with Session(engine) as db:
+        user = db.get(User, u.id)
+        user.totp_secret, user.totp_last_step = "A" * 32, 123
+        db.add(RecoveryCode(user_id=u.id, code_hash="x" * 64))
+        db.add(UserSession(token_hash="y" * 64, user_id=u.id,
+                           expires_at=u.created_at.replace(year=2099)))
+        db.commit()
+    assert users.list_users(engine)[0][3] is True
+
+    users.reset_mfa(engine, "emir")
+
+    with Session(engine) as db:
+        user = db.get(User, u.id)
+        assert user.totp_secret is None and user.totp_last_step is None
+        assert db.scalar(select(func.count()).select_from(RecoveryCode)) == 0
+        assert db.scalar(select(func.count()).select_from(UserSession)) == 0
+        assert db.scalars(select(AuthEvent.action)).all() == ["mfa_reset"]
+    assert users.list_users(engine)[0][3] is False

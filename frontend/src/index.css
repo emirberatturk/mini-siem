@@ -581,6 +581,23 @@ html:has(body.report-body), body.report-body { background: #fff; color: #1f2937;
 .report .facts.evidence dt { color: #6b7280; }
 .report .facts.evidence dd, .report .facts.evidence dd * { color: #1f2937 !important; }
 .report .tag { background: #fef3c7; color: #92400e; }
+/* ── Haftalık rapor ─────────────────────────────────────────────────────── */
+.week-nav { display: flex; gap: 6px; }
+.report .btn-ghost { color: #1d3f8a; }
+.report .btn-ghost:disabled { color: #9ca3af; }
+.report-warn { margin: 14px 0 0; padding: 8px 12px; border-radius: 6px; background: #fffbeb; border: 1px solid #fcd34d; color: #78350f; }
+.kpi-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.kpi { border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 10px; break-inside: avoid; }
+.kpi-label { font-size: 11px; color: #6b7280; }
+.kpi-value { font-size: 20px; font-weight: 700; color: #0f172a; }
+.kpi-delta { font-size: 10.5px; }
+.delta-up { color: #b45309; }
+.delta-down { color: #047857; }
+.report-bullets { margin: 10px 0 0; padding-left: 18px; }
+.bar-cell { width: 34%; }
+.bar { display: block; height: 8px; border-radius: 4px; background: #1d3f8a; min-width: 1px; }
+a.nav-item { text-decoration: none; }
+@media (max-width: 720px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
 @media print {
   .no-print { display: none !important; }
   .report { padding: 0; max-width: none; }
@@ -597,6 +614,20 @@ html:has(body.report-body), body.report-body { background: #fff; color: #1f2937;
 .login-card pre { white-space: pre-wrap; word-break: break-all; margin: 8px 0 0; font-size: 12px; }
 .login-brand { margin-bottom: 4px; }
 .login-hint { font-size: 12px; margin: 0; }
+.login-form { display: flex; flex-direction: column; gap: 14px; }
+.login-links { display: flex; justify-content: space-between; gap: 8px; }
+.login-links .btn { padding: 4px 8px; font-size: 13px; }
+.code-input { font-family: var(--mono, ui-monospace, monospace); font-size: 20px !important; letter-spacing: .2em; text-align: center; }
+.enroll-steps { margin: 0; padding-left: 20px; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+.enroll-qr { align-self: center; width: 200px; height: 200px; border-radius: 10px; background: #fff; image-rendering: pixelated; }
+.enroll-secret { font-size: 13px; }
+.enroll-secret summary { cursor: pointer; color: var(--accent); }
+.enroll-secret p { margin: 6px 0; font-size: 12px; }
+.enroll-secret code { display: block; font-size: 14px; letter-spacing: .05em; word-break: break-all; user-select: all; }
+.recovery-codes { list-style: none; margin: 0; padding: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; border-radius: 8px; background: rgba(0,0,0,.25); }
+.recovery-codes code { font-size: 15px; user-select: all; }
+.login-card .check { flex-direction: row; align-items: center; gap: 8px; }
+.login-card .check input { padding: 0; width: 16px; height: 16px; }
 .card-warn { background: #3a2a14; color: #ffd9a8; border: 1px solid #6b4a1c; padding: 12px; border-radius: 8px; font-size: 13px; }
 .topbar-right { display: flex; align-items: center; gap: 14px; }
 .user-chip { font-size: 13px; padding: 4px 10px; border-radius: 999px; background: rgba(255,255,255,.06); }

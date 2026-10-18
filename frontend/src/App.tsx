@@ -8,6 +8,7 @@ import OverviewPage from './pages/OverviewPage'
 import ReportPage from './pages/ReportPage'
 import RulesPage from './pages/RulesPage'
 import UploadPage from './pages/UploadPage'
+import WeeklyReportPage from './pages/WeeklyReportPage'
 
 type Status = { kind: 'loading' } | { kind: 'up'; data: HealthResponse } | { kind: 'down' }
 
@@ -42,11 +43,28 @@ const reportIdFromHash = (): number | null => {
   return id === 'report' && Number.isInteger(n) && n > 0 ? n : null
 }
 
+// #weekly ya da #weekly/2026-09-23: menüsüz, yazdırılabilir haftalık rapor (yeni sekmede)
+const weeklyFromHash = (): { end?: string } | null => {
+  const [id, day] = window.location.hash.slice(1).split('/')
+  if (id !== 'weekly') return null
+  return /^\d{4}-\d{2}-\d{2}$/.test(day ?? '') ? { end: day } : {}
+}
+
 /** Giriş kapısı: oturum yoksa (veya düşerse) giriş ekranı. Yetki kontrolü asıl olarak
  *  sunucudadır; arayüz yalnızca kullanıcının yapamayacağı şeyleri göstermez. */
 export default function App() {
   const reportId = reportIdFromHash()
+  const weekly = weeklyFromHash()
   const [me, setMe] = useState<Me | null | undefined>(undefined)
+  const [, setHash] = useState(window.location.hash)
+
+  // Adres çubuğuna #weekly / #report/12 yazılınca da rapor açılsın (menü içi gezinme
+  // replaceState kullandığı için bu olayı tetiklemez)
+  useEffect(() => {
+    const onHash = () => setHash(window.location.hash)
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
 
   useEffect(() => {
     api.me().then(setMe).catch(() => setMe(null))
@@ -58,6 +76,7 @@ export default function App() {
   if (me === undefined) return <div className="login-wrap muted">Yükleniyor…</div>
   if (me === null) return <LoginPage onLogin={setMe} />
   if (reportId) return <ReportPage alertId={reportId} />
+  if (weekly) return <WeeklyReportPage key={weekly.end ?? 'son'} initialEnd={weekly.end} />
   return <Shell me={me} onLogout={() => api.logout().finally(() => setMe(null))} />
 }
 
@@ -117,6 +136,10 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
             {item.label}
           </button>
         ))}
+        <a className="nav-item" href="#weekly" target="_blank" rel="noopener noreferrer">
+          <span className="nav-icon" aria-hidden>▤</span>
+          Haftalık Rapor
+        </a>
         <div className="sidebar-foot muted">
           {status.kind === 'up' ? `v${status.data.version}` : ''} · yalnızca yerel ağ
         </div>

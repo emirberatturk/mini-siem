@@ -8,7 +8,8 @@ ve alarmları bir SOC arayüzünde yöneten, sıfırdan geliştirdiğim eğitim 
 > KVKK/GDPR-style PII masking, 7 behavior-based detection rules, 10 SigmaHQ signature rules and a
 > learned per-parameter anomaly profile (both evaluated on the raw request before masking; on the
 > labeled CSIC 2010 dataset: 37% recall at 99.96% precision, up from 4.2% with signatures alone),
-> MITRE ATT&CK mapping, correlation, alert triage workflow and a SOC dashboard. On 2 months of
+> MITRE ATT&CK mapping, correlation, alert triage workflow, a SOC dashboard, mandatory TOTP
+> two-factor login, a 90-day retention policy with secure deletion and a printable weekly report. On 2 months of
 > real logs (43,000+ events) it reduced 88 initial alerts to 3 meaningful ones.
 > Python · FastAPI · React · TypeScript.
 
@@ -44,12 +45,12 @@ ve alarmları bir SOC arayüzünde yöneten, sıfırdan geliştirdiğim eğitim 
 | **Log toplama** | Apache access log yükleme (düz metin veya `.gz`). Boyut sınırı, gzip bombası koruması, ikili dosya reddi, log injection'a karşı güvenli satır bölme. Aynı dosya iki kez yüklenirse çift kayıt oluşmaz |
 | **Ayrıştırma** | Apache Combined/Common format, `\"` kaçışları, IPv6; tüm zamanlar UTC'ye çevrilir. Bozuk satırlar sessizce atılmaz, sayılır |
 | **Normalizasyon** | Elastic Common Schema'dan (ECS) esinlenen ortak şema. Giriş API'sinin 200/401/429 yanıtlarından *başarılı giriş / başarısız giriş / hesap kilidi* olayları çıkarılır |
-| **KVKK** | Kişisel veri formu olan sayfalarda tüm parametreler, hassas parametre adları (tel, email, şifre…), e-posta, telefon ve TC Kimlik No (kontrol haneli doğrulama) maskelenir |
+| **KVKK** | Kişisel veri formu olan sayfalarda tüm parametreler, hassas parametre adları (tel, email, şifre…), e-posta, telefon ve TC Kimlik No (kontrol haneli doğrulama) maskelenir. **Saklama süresi** (varsayılan 90 gün): eski olaylar silinir, kapatılmış alarmların IP'leri maskelenir |
 | **Tespit** | 7 davranış kuralı + 10 SigmaHQ imza kuralı + öğrenilmiş profille anomali tespiti; kayan pencere mantığı, alarm tekilleştirme; eşikler YAML'da |
 | **Korelasyon** | Başarısız denemelerin ardından gelen başarılı giriş **kritik** alarm olur; sonraki admin istekleri kanıta eklenir |
 | **Alarm yönetimi** | Yeni → İnceleniyor → Doğrulandı / Yanlış alarm → Çözüldü. Gerekçe yazılmadan kapatılamaz, silinmeyen denetim geçmişi tutulur |
-| **SOC arayüzü** | Genel bakış, alarm listesi ve detayı, önerilen inceleme adımları, olay arama (threat hunting), kural ekranı, yazdırılabilir olay raporu |
-| **Giriş ve roller** | scrypt ile saklanan şifreler, HttpOnly + SameSite=Strict oturum çerezi, CSRF başlığı, deneme sınırı; Yönetici / Analist rolleri |
+| **SOC arayüzü** | Genel bakış, alarm listesi ve detayı, önerilen inceleme adımları, olay arama (threat hunting), kural ekranı, yazdırılabilir olay raporu ve **haftalık özet rapor** |
+| **Giriş ve roller** | Herkese zorunlu **iki adımlı doğrulama** (TOTP: Google Authenticator vb. + tek kullanımlık yedek kodlar), scrypt ile saklanan şifreler, HttpOnly + SameSite=Strict oturum çerezi, CSRF başlığı, deneme sınırı; Yönetici / Analist rolleri |
 | **MITRE ATT&CK** | Yalnızca kuralın anlamıyla birebir örtüşen teknikler eşlenir; örtüşme yoksa eşleme yapılmaz |
 
 ### Tespit kuralları
@@ -163,6 +164,38 @@ maske kapatılırsa altbilgi bunu açıkça belirtir.
 
 <img src="docs/img/report.png" alt="Olay raporu (IP'ler maskeli)" width="620">
 
+### Haftalık rapor
+
+Menüdeki **Haftalık Rapor**, yöneticiye verilecek bir haftalık özet açar: olay, saldırı imzası,
+4xx ve başarısız giriş sayıları (önceki haftaya göre değişimiyle), günlük dağılım, alarmlar ve
+analist kararları (aynı kararla kapatılan alarmlar tek satırda), en sık imzalar ve en çok hata
+üreten adresler. Haftalar logdaki olay zamanına göre **Türkiye günleriyle** hesaplanır ve
+varsayılan hafta son yüklenen logla biter (loglar elle ve gecikmeli yüklendiği için "bugünden
+geriye 7 gün" çoğu zaman boş olurdu). Hiç kaydı olmayan günler "log yüklenmemiş olabilir" diye
+işaretlenir. Olay raporu gibi IP'ler varsayılan maskelidir; hiçbir veri dışarı gönderilmez
+(e-posta yerine yazdırılabilir sayfa: e-posta, SIEM'de bir şifre saklamayı gerektirirdi).
+
+<img src="docs/img/weekly.png" alt="Haftalık rapor (sahte demo verisiyle)" width="620">
+
+<sub>Bu görüntü gerçek log değil, tanıtım için üretilmiş **sahte demo verisidir** (IP'ler RFC 5737
+belge aralıklarından).</sub>
+
+### Veri saklama süresi (KVKK)
+
+Kişisel veri, işleme amacının gerektirdiğinden uzun tutulmaz. SIEM her açılışta
+(`baslat.bat`) saklama süresini uygular (`SIEM_RETENTION_DAYS`, varsayılan **90 gün**, en az 7):
+
+- Logdaki zamanı süreyi aşan **olaylar silinir**; SIEM'in kendi giriş kayıtları da.
+- **Alarmlar ve analist kararları kalır** (geçmiş ve denetim izi kaybolmaz), ama kapatılmış
+  alarmlardaki IP adresleri başlıkta, açıklamada, kanıtta ve analist notunda maskelenir
+  (`93.x.x.x`). İncelemesi süren alarma dokunulmaz; kapatılınca maskelenir.
+- SQLite silinen satırı dosyada boş sayfa olarak bırakabilir; silme `secure_delete` açıkken
+  yapılır ve WAL dosyası boşaltılır. Bir test, silinen kaydın veritabanı **dosyasının
+  baytlarında** kalmadığını doğrular.
+- Elle çalıştırmak için: `.venv\Scripts\python.exe -m app.tools.retention --deneme`
+  (yalnızca sayar). Araç, `data/` klasöründeki elle alınmış yedekleri de listeler: saklama süresi
+  yedeklere uygulanmaz, gerekmeyenler elle silinmelidir.
+
 ![Kurallar](docs/img/rules.png)
 
 ## Kurulum ve çalıştırma
@@ -191,7 +224,13 @@ cd backend
 .venv\Scripts\python.exe -m app.tools.users listele   # diğerleri: sifre <ad> · kilit-ac <ad> · sil <ad>
 ```
 
-<img src="docs/img/login.png" alt="Giriş ekranı" width="360">
+İlk girişte şifreden sonra bir QR kod çıkar: telefondaki doğrulama uygulamasıyla (Google/Microsoft
+Authenticator) okutulur ve 10 yedek kod bir kez gösterilir. Sonraki girişlerde şifreden sonra
+uygulamadaki 6 haneli kod istenir. Telefon ve yedek kodlar kaybolursa, bilgisayarın başındaki
+yönetici terminalden sıfırlar (web arayüzünde bu düğme bilerek yoktur):
+`.venv\Scripts\python.exe -m app.tools.users 2fa-sifirla <ad>`
+
+<img src="docs/img/login.png" alt="Giriş: önce şifre, sonra telefondaki doğrulama kodu" width="640">
 
 ### Kendi siten için ayarlar
 
@@ -209,7 +248,7 @@ koddan ayrıdır ve **git'e girmez**, çünkü bu bilgiler saldırgana harita ol
 
 ```powershell
 cd backend
-.venv\Scripts\python.exe -m pytest        # 193 test
+.venv\Scripts\python.exe -m pytest        # 268 test
 .venv\Scripts\python.exe -m ruff check .  # lint + bandit güvenlik kuralları
 
 cd ..\frontend
@@ -227,7 +266,17 @@ dokümantasyon IP'leri ve açıkça sahte kişisel veriler bulunur.
 - **Giriş ve oturum:** şifreler scrypt + rastgele tuzla saklanır (en az 12 karakter); oturum
   belirteci HttpOnly + SameSite=Strict çerezde taşınır, veritabanında yalnızca SHA-256 özeti tutulur,
   8 saat sonra düşer. Durum değiştiren her istek `X-Requested-With` başlığı ister (CSRF).
-- **Brute-force:** 15 dakikada 5 hatalı denemeden sonra kullanıcı adı kilitlenir. Var olmayan
+- **İki adımlı doğrulama (herkese zorunlu):** şifre doğruysa yalnızca 5 dakikalık bir *ara oturum*
+  açılır; bununla hiçbir veri okunamaz. Telefon kodu doğrulanınca ara oturum silinir ve **yeni** bir
+  belirteçle tam oturum açılır (oturum sabitlemeye karşı). Kodlar RFC 6238 (TOTP) ile üretilir,
+  aynı kod iki kez kabul edilmez, saat kayması için yalnızca ±30 sn tolerans vardır. Yedek kodlar
+  tek kullanımlıktır ve yalnızca özetleri saklanır. Kurulu doğrulama, şifreyle değiştirilemez.
+  Bilinen sınır: TOTP anahtarı sunucunun kodu hesaplayabilmesi için veritabanında açık durur
+  (standart TOTP'nin doğası); veritabanı yerel diskte kalır ve şifre özetleri olmadan tek başına
+  giriş sağlamaz.
+- **Brute-force:** 15 dakikada 5 hatalı denemeden (yanlış şifre **veya** yanlış kod) sonra kullanıcı
+  adı kilitlenir. Şifreyi bilen biri tekrar tekrar giriş yaparak sayacı sıfırlayamaz; sayaç yalnızca
+  iki adım da başarılı olunca sıfırlanır. Var olmayan
   kullanıcı adları da aynı şekilde sayılır ve hata mesajı hep aynıdır: kullanıcı adı yoklanamaz.
   Her giriş denemesi `auth_events` tablosuna yazılır.
 - **Roller (en az yetki):** Yönetici log yükler ve kuralları çalıştırır; Analist alarmları
@@ -265,7 +314,6 @@ React · TypeScript · Vite
 ## Sonraki adımlar
 
 - IP'nin ülkesini çevrimdışı veritabanıyla gösterme (IP'ler dışarı gönderilmeden)
-- Veri saklama süresi (retention), iki adımlı doğrulama (TOTP)
 - Yalnızca maskelenmiş alarm özetleriyle çalışan bir yapay zekâ inceleme asistanı
 
 ---

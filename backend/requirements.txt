@@ -4,3 +4,4 @@ pydantic-settings==2.*
 python-multipart==0.0.*
 sqlalchemy==2.0.*
 pyyaml==6.*
+segno==1.6.*

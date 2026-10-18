@@ -8,6 +8,7 @@ Kullanım (backend klasöründe):
     .venv\\Scripts\\python.exe -m app.tools.users listele
     .venv\\Scripts\\python.exe -m app.tools.users sifre emir
     .venv\\Scripts\\python.exe -m app.tools.users kilit-ac emir
+    .venv\\Scripts\\python.exe -m app.tools.users 2fa-sifirla emir   (telefon kaybolduysa)
     .venv\\Scripts\\python.exe -m app.tools.users sil emir
 """
 
@@ -23,7 +24,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from app.core import security
-from app.db.models import AuthEvent, User, UserSession
+from app.db.models import AuthEvent, RecoveryCode, User, UserSession
 from app.db.session import engine, init_db
 
 ROLE_ALIASES = {"yonetici": "admin", "yönetici": "admin", "admin": "admin",
@@ -76,15 +77,29 @@ def unlock(bind: Engine, username: str) -> None:
         db.commit()
 
 
+def reset_mfa(bind: Engine, username: str) -> None:
+    """Telefon ve yedek kodlar kaybolduysa: anahtarı ve yedek kodları siler, oturumları kapatır.
+    Kullanıcı bir sonraki girişte telefonunu yeniden tanıtır. Bu yüzden yalnızca bilgisayarın
+    başındaki yönetici (terminalden) yapabilir; web arayüzünde böyle bir düğme yoktur."""
+    with Session(bind) as db:
+        user = _get(db, normalize_username(username))
+        user.totp_secret = user.totp_last_step = None
+        db.execute(delete(RecoveryCode).where(RecoveryCode.user_id == user.id))
+        db.execute(delete(UserSession).where(UserSession.user_id == user.id))
+        db.add(AuthEvent(username=user.username, source_ip="yerel-terminal", action="mfa_reset"))
+        db.commit()
+
+
 def remove_user(bind: Engine, username: str) -> None:
     with Session(bind) as db:
         db.delete(_get(db, normalize_username(username)))  # oturumları da silinir (CASCADE)
         db.commit()
 
 
-def list_users(bind: Engine) -> list[tuple[str, str, str]]:
+def list_users(bind: Engine) -> list[tuple[str, str, str, bool]]:
     with Session(bind) as db:
-        return [(u.username, u.role, u.last_login_at.isoformat() if u.last_login_at else "—")
+        return [(u.username, u.role, u.last_login_at.isoformat() if u.last_login_at else "—",
+                 u.totp_secret is not None)
                 for u in db.scalars(select(User).order_by(User.username))]
 
 
@@ -109,7 +124,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("ad")
     p.add_argument("--rol", required=True, choices=["yonetici", "analist"])
     sub.add_parser("listele")
-    for cmd in ("sifre", "kilit-ac", "sil"):
+    for cmd in ("sifre", "kilit-ac", "2fa-sifirla", "sil"):
         sub.add_parser(cmd).add_argument("ad")
     args = parser.parse_args(argv)
 
@@ -119,14 +134,18 @@ def main(argv: list[str] | None = None) -> None:
             user = add_user(engine, args.ad, args.rol, _ask_password())
             print(f"✅ '{user.username}' eklendi ({args.rol}).")
         elif args.cmd == "listele":
-            for name, role, last in list_users(engine):
-                print(f"{name:20} {role:8} son giriş: {last}")
+            for name, role, last, has_mfa in list_users(engine):
+                mfa_state = "2FA açık" if has_mfa else "2FA kurulmadı"
+                print(f"{name:20} {role:8} {mfa_state:14} son giriş: {last}")
         elif args.cmd == "sifre":
             set_password(engine, args.ad, _ask_password())
             print("✅ Şifre değişti; açık oturumlar kapatıldı.")
         elif args.cmd == "kilit-ac":
             unlock(engine, args.ad)
             print("✅ Kilit açıldı.")
+        elif args.cmd == "2fa-sifirla":
+            reset_mfa(engine, args.ad)
+            print("✅ İki adımlı doğrulama sıfırlandı; ilk girişte telefon yeniden tanıtılacak.")
         elif args.cmd == "sil":
             remove_user(engine, args.ad)
             print("✅ Silindi.")

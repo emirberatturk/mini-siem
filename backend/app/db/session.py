@@ -52,6 +52,11 @@ def init_db(bind: Engine = engine) -> None:
 _ADDED_COLUMNS = {
     ("events", "signatures"): "TEXT NOT NULL DEFAULT ''",
     ("events", "anomalies"): "TEXT NOT NULL DEFAULT ''",
+    ("users", "totp_secret"): "VARCHAR(64)",
+    ("users", "totp_last_step"): "INTEGER",
+    # 2FA'dan önce açılmış oturumlar "legacy" olur ve geçmez (tam oturum yalnızca kodla açılır)
+    ("user_sessions", "stage"): "VARCHAR(8) NOT NULL DEFAULT 'legacy'",
+    ("user_sessions", "pending_secret"): "VARCHAR(64)",
 }
 
 

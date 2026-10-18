@@ -11,9 +11,11 @@ from app.core import security
 from app.core.config import settings
 from app.db.models import Alert, AlertHistory, AuthEvent, UserSession
 from app.main import app
-from tests.conftest import TEST_PASSWORD, make_user
+from tests.conftest import TEST_PASSWORD, full_login, make_user
 
 PUBLIC = {"/api/v1/health", "/api/v1/auth/login", "/api/v1/auth/logout", "/api/v1/auth/setup"}
+# Şifre adımından sonraki uçlar: tam oturum değil, ara oturum ister (girişsiz yine 401)
+PENDING = {"/api/v1/auth/mfa/verify", "/api/v1/auth/mfa/setup", "/api/v1/auth/mfa/enable"}
 
 
 def api_routes():
@@ -34,7 +36,7 @@ def test_every_non_public_endpoint_requires_login(anon_client):
     for method, path in api_routes():
         if path in PUBLIC:
             continue
-        r = anon_client.request(method, path)
+        r = anon_client.request(method, path)  # PENDING uçlar da dahil
         assert r.status_code == 401, f"{method} {path} → {r.status_code}"
         checked += 1
     assert checked >= 8  # listenin boş kalmadığından emin ol
@@ -55,11 +57,12 @@ def test_public_endpoints_leak_nothing_sensitive(anon_client, db_session):
 def test_login_sets_hardened_cookie_and_stores_only_hash(anon_client, db_session):
     make_user(db_session, "emir", "admin")
 
-    r = login(anon_client, "emir")
+    r = full_login(anon_client, db_session, "emir")
 
     assert r.status_code == 200 and r.json()["role"] == "admin"
     cookie = r.headers["set-cookie"].lower()
     assert "httponly" in cookie and "samesite=strict" in cookie and "path=/api" in cookie
+    assert f"max-age={settings.session_hours * 3600}" in cookie
     token = anon_client.cookies.get(COOKIE)
     stored = db_session.scalars(select(UserSession.token_hash)).all()
     assert stored == [security.token_digest(token)] and token not in stored
@@ -103,10 +106,10 @@ def test_success_resets_the_failure_count(anon_client, db_session):
     make_user(db_session, "emir", "admin")
     for _ in range(settings.lockout_attempts - 1):
         login(anon_client, "emir", "yanlis-sifre-1234")
-    assert login(anon_client, "emir").status_code == 200
+    assert full_login(anon_client, db_session, "emir").status_code == 200  # iki adım da geçti
     for _ in range(settings.lockout_attempts - 1):
         login(anon_client, "emir", "yanlis-sifre-1234")
-    assert login(anon_client, "emir").status_code == 200
+    assert full_login(anon_client, db_session, "emir").status_code == 200
 
 
 def test_lock_expires_after_the_window(anon_client, db_session):
@@ -123,11 +126,11 @@ def test_lock_expires_after_the_window(anon_client, db_session):
 def test_auth_events_are_recorded(anon_client, db_session):
     make_user(db_session, "emir", "admin")
     login(anon_client, "emir", "yanlis-sifre-1234")
-    login(anon_client, "emir")
+    full_login(anon_client, db_session, "emir")
     anon_client.post("/api/v1/auth/logout")
 
     actions = db_session.scalars(select(AuthEvent.action).order_by(AuthEvent.id)).all()
-    assert actions == ["login_fail", "login_ok", "logout"]
+    assert actions == ["login_fail", "password_ok", "login_ok", "logout"]
 
 
 # ── oturum ──────────────────────────────────────────────────────────────────

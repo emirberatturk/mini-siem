@@ -141,6 +141,9 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(16))  # "admin" (yönetici) veya "analyst" (analist)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     last_login_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    # İki adımlı doğrulama (bkz. core/mfa.py). Anahtar kurulana kadar hesap kullanılamaz.
+    totp_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    totp_last_step: Mapped[int | None] = mapped_column(Integer, nullable=True)  # tekrar engeli
 
 
 class UserSession(Base):
@@ -153,6 +156,21 @@ class UserSession(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     expires_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    # "full": tam oturum. "mfa" / "enroll": şifre doğru, telefon kodu (ya da kurulumu) bekleniyor;
+    # bu aşamadaki oturum yalnızca kod uçlarını kullanabilir ve birkaç dakikada düşer.
+    stage: Mapped[str] = mapped_column(String(8), default="full", server_default="full")
+    pending_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)  # kurulumda
+
+
+class RecoveryCode(Base):
+    """Telefon kaybolursa kullanılacak tek kullanımlık yedek kod (yalnızca özeti saklanır)."""
+
+    __tablename__ = "recovery_codes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    code_hash: Mapped[str] = mapped_column(String(64))
+    used_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
 
 
 class AuthEvent(Base):
@@ -165,4 +183,6 @@ class AuthEvent(Base):
     at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, index=True)
     username: Mapped[str] = mapped_column(String(64), index=True)
     source_ip: Mapped[str] = mapped_column(String(45))
-    action: Mapped[str] = mapped_column(String(16))  # login_ok / login_fail / login_locked / logout
+    # login_ok / login_fail / login_locked / logout / unlock / password_ok / mfa_fail /
+    # mfa_enrolled / recovery_used / mfa_reset
+    action: Mapped[str] = mapped_column(String(16))

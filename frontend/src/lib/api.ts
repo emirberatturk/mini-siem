@@ -218,6 +218,59 @@ export interface Me {
   role_label: string
 }
 
+export interface WeeklyTotals {
+  events: number
+  unique_ips: number
+  client_errors: number
+  suspicious: number
+  suspicious_blocked: number
+  auth_ok: number
+  auth_fail: number
+  alerts: number
+}
+
+export interface WeeklyReport {
+  start: string
+  end: string
+  first_day: string // YYYY-MM-DD (yerel gün)
+  last_day: string
+  prev_last_day: string | null
+  next_last_day: string | null
+  days: { day: string; events: number; suspicious: number; auth_failures: number; alerts: number }[]
+  missing_days: string[]
+  totals: WeeklyTotals
+  previous: WeeklyTotals
+  alerts: {
+    id: number
+    rule_id: string
+    title: string
+    severity: Severity
+    status: AlertStatus
+    source_ip: string
+    first_seen: string
+    decided_by: string | null
+    decision_note: string | null
+  }[]
+  alerts_by_status: Partial<Record<AlertStatus, number>>
+  open_alerts_total: number
+  top_signatures: SignatureCount[]
+  top_anomalies: SignatureCount[]
+  top_sources: Count[]
+  retention_days: number
+  oldest_event: string | null
+  next_purge_at: string | null
+}
+
+/** Şifre doğruysa: telefon kodu mu isteniyor ("mfa"), yoksa ilk kurulum mu ("enroll")? */
+export interface LoginStep {
+  stage: 'mfa' | 'enroll'
+}
+
+export interface Enrollment {
+  secret: string // QR okutulamazsa uygulamaya elle girilecek anahtar
+  qr: string // data:image/svg+xml;… (yalnızca <img src> ile gösterilir)
+}
+
 export const api = {
   health: () => get<HealthResponse>('/health'),
   overview: () => get<Overview>('/stats/overview'),
@@ -225,11 +278,16 @@ export const api = {
   alert: (id: number) => get<AlertDetail>(`/alerts/${id}`),
   events: (params: Query) => get<Page<NormalizedEvent>>('/events', params),
   rules: () => get<Rule[]>('/rules'),
+  weekly: (end?: string) => get<WeeklyReport>('/reports/weekly', { end }),
 
   me: () => get<Me>('/auth/me'),
   setup: () => get<{ has_users: boolean }>('/auth/setup'),
   login: (username: string, password: string) =>
-    sendJson<Me>('POST', '/auth/login', { username, password }),
+    sendJson<LoginStep>('POST', '/auth/login', { username, password }),
+  verifyCode: (code: string) => sendJson<Me>('POST', '/auth/mfa/verify', { code }),
+  startEnrollment: () => send<Enrollment>('/auth/mfa/setup', { method: 'POST' }),
+  finishEnrollment: (code: string) =>
+    sendJson<{ me: Me; recovery_codes: string[] }>('POST', '/auth/mfa/enable', { code }),
   logout: () => send<{ ok: boolean }>('/auth/logout', { method: 'POST' }),
 
   setAlertStatus: (id: number, status: AlertStatus, note: string) =>
