@@ -232,6 +232,26 @@ yönetici terminalden sıfırlar (web arayüzünde bu düğme bilerek yoktur):
 
 <img src="docs/img/login.png" alt="Giriş: önce şifre, sonra telefondaki doğrulama kodu" width="640">
 
+### Gerçek log olmadan denemek (demo verisi)
+
+Elinde log yoksa ya da tanıtım için görsel gerekiyorsa, sahte bir demo veritabanı kurulur: üç haftalık
+normal trafik ve gerçek veride görülen saldırı türleri (tarama, brute-force, başarısız denemelerden
+sonra başarılı giriş, SQL injection, "low and slow" bot…). IP'ler yalnızca RFC 5737 belge
+aralıklarındandır ve araç, gerçek site ayarları açıksa çalışmayı reddeder. README'deki haftalık rapor
+görüntüsü ve tanıtım videosu bununla üretildi.
+
+```powershell
+cd backend
+.venv\Scripts\python.exe -m app.tools.demo_veri data\demo.db      # demo / analist hesapları, şifreler dosyada
+$env:SIEM_DATABASE_URL = "sqlite:///data/demo.db"; $env:SIEM_USE_LOCAL_CONFIG = "false"
+.venv\Scripts\python.exe -m uvicorn app.main:app --port 8001     # asıl SIEM 8000'de açık kalabilir
+
+cd ..\frontend
+$env:SIEM_API_PORT = "8001"; npx vite --port 5175                # demo arayüzü: http://127.0.0.1:5175
+```
+
+Ekran görüntülerini otomatik almak için: `scripts/demo_ekran_goruntuleri.py` (başsız Chrome).
+
 ### Kendi siten için ayarlar
 
 Siteye özel bilgiler (admin sayfaları, giriş API'si, bilinen cihazlar, aracı sunucu IP'leri)
@@ -248,7 +268,7 @@ koddan ayrıdır ve **git'e girmez**, çünkü bu bilgiler saldırgana harita ol
 
 ```powershell
 cd backend
-.venv\Scripts\python.exe -m pytest        # 268 test
+.venv\Scripts\python.exe -m pytest        # 279 test
 .venv\Scripts\python.exe -m ruff check .  # lint + bandit güvenlik kuralları
 
 cd ..\frontend
